@@ -14,7 +14,9 @@ function Hero() {
   if (!live.length) return null;
   const best = live.slice().sort((a, b) => a.score - b.score)[0];
   const cheapestBy = (r: string) => live.filter((o) => o.region === r).sort((a, b) => a.price_pp - b.price_pp)[0];
-  const picks = REGION_ORDER.map(cheapestBy).filter((o): o is Offer => !!o && o !== best).slice(0, 4);
+  const byRegion = REGION_ORDER.map(cheapestBy).filter((o): o is Offer => !!o && o !== best);
+  const rest = live.filter((o) => o !== best && !byRegion.includes(o)).sort((a, b) => a.score - b.score);
+  const picks = [...byRegion, ...rest].slice(0, 4);
   const off = discount(best);
   return (
     <section class="hero">
@@ -40,7 +42,7 @@ function Hero() {
           <div class="stat"><small>Akciové tipy</small><b class="num">{d.tips.length}<em>{plural(d.tips.length, "tip", "tipy", "tipov")}</em></b></div>
         </div>
         <div class="mini-list">
-          <h3>Najlacnejšie podľa regiónu</h3>
+          <h3>Ďalšie top ponuky</h3>
           {picks.map((o) => (
             <button class="mini" onClick={() => (selected.value = o)}>
               <Photo src={o.image} country={o.country} />

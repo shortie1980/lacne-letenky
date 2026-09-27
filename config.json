@@ -69,7 +69,8 @@
   ],
   "excluded": [
     "KZ",
-    "TM"
+    "TM",
+    "PK"
   ],
   "notify": {
     "ntfy_topic": ""

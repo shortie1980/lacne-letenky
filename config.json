@@ -1,5 +1,10 @@
 {
-  "origins": ["VIE", "BTS", "BUD", "PRG"],
+  "origins": [
+    "VIE",
+    "BTS",
+    "BUD",
+    "PRG"
+  ],
   "months_ahead": 6,
   "max_transfers": 2,
   "max_alerts_per_run": 15,
@@ -7,17 +12,67 @@
   "renotify_days": 7,
   "renotify_drop_pct": 10,
   "regions": {
-    "europe":        {"label": "Európa",                  "enabled": true, "max_price": 35,  "min_days": 2, "max_days": 10},
-    "middle_east":   {"label": "Kaukaz a Blízky východ",  "enabled": true, "max_price": 100, "min_days": 3, "max_days": 14},
-    "asia":          {"label": "Ázia",                    "enabled": true, "max_price": 450, "min_days": 7, "max_days": 28},
-    "north_america": {"label": "Severná Amerika",         "enabled": true, "max_price": 350, "min_days": 5, "max_days": 28},
-    "latam":         {"label": "Južná Amerika a Karibik", "enabled": true, "max_price": 650, "min_days": 7, "max_days": 28}
+    "europe": {
+      "label": "Európa",
+      "enabled": true,
+      "max_price": 35,
+      "min_days": 2,
+      "max_days": 10
+    },
+    "middle_east": {
+      "label": "Kaukaz a Blízky východ",
+      "enabled": true,
+      "max_price": 100,
+      "min_days": 3,
+      "max_days": 14
+    },
+    "central_asia": {
+      "label": "Stredná Ázia",
+      "enabled": false,
+      "max_price": 250,
+      "min_days": 5,
+      "max_days": 21
+    },
+    "asia": {
+      "label": "Ázia",
+      "enabled": true,
+      "max_price": 450,
+      "min_days": 7,
+      "max_days": 28
+    },
+    "north_america": {
+      "label": "Severná Amerika",
+      "enabled": true,
+      "max_price": 350,
+      "min_days": 5,
+      "max_days": 28
+    },
+    "latam": {
+      "label": "Južná Amerika a Karibik",
+      "enabled": true,
+      "max_price": 650,
+      "min_days": 7,
+      "max_days": 28
+    }
   },
   "watchlist": [
-    {"code": "TYO", "name": "Tokyo", "max_price": 550},
-    {"code": "NYC", "name": "New York", "max_price": 300}
+    {
+      "code": "TYO",
+      "name": "Tokyo",
+      "max_price": 550
+    },
+    {
+      "code": "NYC",
+      "name": "New York",
+      "max_price": 300
+    }
   ],
-  "excluded": ["KZ", "KG"],
-  "notify": {"ntfy_topic": ""},
-  "verify": {"max_checks_per_run": 5, "tolerance_pct": 10}
+  "excluded": [],
+  "notify": {
+    "ntfy_topic": ""
+  },
+  "verify": {
+    "max_checks_per_run": 5,
+    "tolerance_pct": 10
+  }
 }

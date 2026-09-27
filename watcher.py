@@ -41,8 +41,9 @@ REGION_COUNTRIES = {
     "europe": """AL AD AT BY BE BA BG HR CY CZ DK EE FI FR DE GR HU IS IE IT XK LV LI LT
         LU MT MD MC ME NL MK NO PL PT RO SM RS SK SI ES SE CH UA GB TR GI FO IM JE GG""",
     "middle_east": "AE QA OM BH KW SA JO IL LB IQ EG GE AM AZ",
-    "asia": """AF BD BT BN KH CN HK MO IN ID JP KZ KG LA MY MV MN MM NP KR PK PH SG LK TW
-        TJ TH TL TM UZ VN""",
+    "central_asia": "AF KZ KG TJ TM UZ",
+    "asia": """BD BT BN KH CN HK MO IN ID JP LA MY MV MN MM NP KR PK PH SG LK TW
+        TH TL VN""",
     "north_america": "US CA MX",
     "latam": """AR BO BR CL CO EC GY PY PE SR UY VE GF BZ CR SV GT HN NI PA CU DO HT JM PR
         BS BB TT AG DM GD KN LC VC AW CW SX BQ KY TC VG VI GP MQ BL MF AI MS BM""",

@@ -117,7 +117,8 @@ select.sort { margin-left: auto; border: 1px solid var(--border); background: va
 .row .p small { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); }
 
 .settings { display: grid; gap: 14px; max-width: 760px; }
-.section { padding: 16px; }
+.section { padding: 16px; transition: box-shadow .3s; }
+.section.attn { box-shadow: 0 0 0 3px var(--accent); }
 .section h3 { margin: 0 0 2px; font-size: 15.5px; }
 .section .sub { margin-bottom: 12px; }
 .field { display: grid; gap: 4px; margin-bottom: 10px; }
@@ -245,8 +246,8 @@ const ORIGIN_OPTIONS = [
   ["VIE", "Viedeň"], ["BTS", "Bratislava"], ["BUD", "Budapešť"], ["PRG", "Praha"], ["KSC", "Košice"],
   ["BRQ", "Brno"], ["KRK", "Krakov"], ["KTW", "Katovice"], ["MUC", "Mníchov"], ["LJU", "Ľubľana"],
 ];
-const REGION_MAX = { europe: 250, middle_east: 500, asia: 1500, north_america: 1500, latam: 2000 };
-const REGION_ICON = { europe: "🇪🇺", middle_east: "🕌", asia: "🌏", north_america: "🗽", latam: "🌴", other: "🌍" };
+const REGION_MAX = { europe: 250, middle_east: 500, central_asia: 800, asia: 1500, north_america: 1500, latam: 2000 };
+const REGION_ICON = { europe: "🇪🇺", middle_east: "🕌", central_asia: "🏔️", asia: "🌏", north_america: "🗽", latam: "🌴", other: "🌍" };
 const LS = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
              set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
 
@@ -336,8 +337,11 @@ async function loadConfig() {
 
 async function saveConfig() {
   if (!S.repo || !S.token) {
-    showTab("settings"); $("#connSection")?.scrollIntoView({ behavior: "smooth" });
-    toast("Najprv pripoj GitHub (sekcia Pripojenie).");
+    showTab("settings");
+    const sec = $("#connSection");
+    sec?.scrollIntoView({ behavior: "smooth", block: "start" });
+    sec?.classList.add("attn"); setTimeout(() => sec?.classList.remove("attn"), 2500);
+    toast("Na uloženie treba najprv pripojiť GitHub. Tvoje zmeny zostanú zachované a po pripojení sa uložia.", 6000);
     return;
   }
   const btn = $("#saveBtn"); btn.disabled = true; btn.textContent = "Ukladám…";
@@ -348,45 +352,52 @@ async function saveConfig() {
       body: JSON.stringify({ message: "Nastavenia z aplikácie", content: b64encode(JSON.stringify(S.draft, null, 2) + "\n"), sha: S.sha, branch: "main" }),
     });
     S.sha = res.content.sha; S.config = clone(S.draft);
-    updateDirty(); toast("Uložené. Nové vyhľadávanie sa práve spúšťa, výsledky budú o 1–2 minúty.", 5000);
-    watchRun();
+    updateDirty(); renderSettings(); renderPrices();
+    toast("✓ Uložené na GitHub. Spúšťam nové vyhľadávanie, výsledky budú asi o minútu.", 5000);
+    watchRun(new Date(Date.now() - 60000));
   } catch (e) {
     if (e.status === 409) { toast("Nastavenia sa medzitým zmenili. Načítavam aktuálne…"); S.config = await loadConfig(); S.draft = clone(S.config); renderSettings(); updateDirty(); }
     else toast(`Uloženie zlyhalo: ${e.message}`, 6000);
-  } finally { btn.disabled = false; btn.textContent = "Uložiť a hľadať"; }
+  } finally { btn.disabled = false; updateDirty(); }
 }
 
 async function runNow() {
   try {
     await gh(`/repos/${S.repo}/actions/workflows/watch.yml/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
-    toast("Vyhľadávanie spustené. Výsledky budú o 1–2 minúty."); watchRun();
+    toast("Vyhľadávanie spustené. Výsledky budú asi o minútu."); watchRun(new Date(Date.now() - 60000));
   } catch (e) {
     toast(e.status === 403 ? "Token nemá oprávnenie Actions: Read and write." : `Nepodarilo sa spustiť: ${e.message}`, 6000);
   }
 }
 
 let runTimer = null;
-async function refreshRunStatus() {
+async function latestRun() {
   if (!S.repo) return null;
-  try {
-    const r = await gh(`/repos/${S.repo}/actions/workflows/watch.yml/runs?per_page=1`);
-    return r.workflow_runs?.[0] || null;
-  } catch { return null; }
+  try { return (await gh(`/repos/${S.repo}/actions/workflows/watch.yml/runs?per_page=3`)).workflow_runs || []; }
+  catch { return null; }
 }
-function watchRun() {
+function watchRun(since) {
   clearInterval(runTimer);
-  setStatus("run", "Hľadám nové ceny…");
+  setStatus("run", "Čakám na spustenie vyhľadávania…");
   let n = 0;
-  runTimer = setInterval(async () => {
+  const tick = async () => {
     n++;
-    const run = await refreshRunStatus();
-    if (run && run.status === "completed" && n > 2) {
+    const runs = await latestRun();
+    const run = runs?.find(r => new Date(r.created_at) >= since);
+    if (run && run.status !== "completed") setStatus("run", "Hľadám nové ceny…");
+    if (run && run.status === "completed") {
       clearInterval(runTimer);
-      if (run.conclusion === "success") { setTimeout(loadData, 45000); setStatus("run", "Hotovo, načítavam výsledky…"); }
-      else setStatus("err", "Posledné vyhľadávanie zlyhalo");
-    }
-    if (n > 40) clearInterval(runTimer);
-  }, 10000);
+      if (run.conclusion === "success") {
+        setStatus("run", "Hotovo, načítavam výsledky…");
+        await new Promise(r => setTimeout(r, 8000));
+        await loadData();
+        S.config = await loadConfig() || S.config; if (!isDirty()) S.draft = clone(S.config);
+        renderSettings(); renderPrices();
+        toast("✓ Výsledky podľa nových nastavení sú načítané.");
+      } else setStatus("err", `Vyhľadávanie zlyhalo · <a href="${esc(run.html_url)}" target="_blank" rel="noopener">detail</a>`);
+    } else if (n > 36) { clearInterval(runTimer); setStatus("err", "Vyhľadávanie sa nespustilo. Skús to znova."); }
+  };
+  runTimer = setInterval(tick, 5000); tick();
 }
 function setStatus(kind, text) { $("#statusDot").className = "dot " + kind; $("#statusText").innerHTML = text; }
 
@@ -472,7 +483,7 @@ function renderDeals() {
 // ─── Ceny teraz ────────────────────────────────────────────────────────────
 function renderPrices() {
   const ch = S.data?.cheapest || {}, regions = S.data?.regions || {};
-  const order = ["europe", "middle_east", "asia", "north_america", "latam", "other"].filter(r => ch[r]?.length);
+  const order = ["europe", "middle_east", "central_asia", "asia", "north_america", "latam", "other"].filter(r => ch[r]?.length);
   if (!order.length) { $("#priceBlocks").innerHTML = `<div class="empty card">Zatiaľ žiadne dáta.</div>`; return; }
   $("#priceBlocks").innerHTML = order.map(r => {
     const rows = ch[r];
@@ -619,8 +630,11 @@ function bindConn() {
     try {
       const f = await gh(`/repos/${S.repo}/contents/config.json?ref=main`);
       LS.set("repo", repo); LS.set("gh_token", token);
-      S.sha = f.sha; S.config = JSON.parse(b64decode(f.content)); S.draft = clone(S.config);
-      toast("Pripojené ✓"); renderSettings(); updateDirty();
+      const hadEdits = S.draft && S.config && JSON.stringify(S.draft) !== JSON.stringify(S.config);
+      S.sha = f.sha; S.config = JSON.parse(b64decode(f.content));
+      if (!hadEdits) S.draft = clone(S.config);
+      renderSettings(); updateDirty();
+      if (hadEdits) { toast("Pripojené ✓ Ukladám tvoje zmeny…"); await saveConfig(); } else toast("Pripojené ✓");
     } catch (e) { S.token = ""; toast(`Pripojenie zlyhalo: ${e.message}`, 6000); }
   });
   $("#disconnect")?.addEventListener("click", e => { e.preventDefault(); LS.set("gh_token", null); S.token = ""; renderSettings(); });
@@ -712,9 +726,11 @@ function addExclude(code) {
   renderSettings(); updateDirty();
 }
 
+function isDirty() { return !!(S.draft && S.config && JSON.stringify(S.draft) !== JSON.stringify(S.config)); }
 function updateDirty() {
-  const dirty = S.draft && S.config && JSON.stringify(S.draft) !== JSON.stringify(S.config);
-  $("#savebar").classList.toggle("show", !!dirty);
+  $("#savebar").classList.toggle("show", isDirty());
+  $("#savebar .msg").textContent = S.token ? "Máš neuložené zmeny" : "Máš neuložené zmeny · na uloženie pripoj GitHub";
+  $("#saveBtn").textContent = S.token ? "Uložiť a hľadať" : "Pripojiť a uložiť";
 }
 
 // ─── Navigácia a udalosti ──────────────────────────────────────────────────

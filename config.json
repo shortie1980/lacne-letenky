@@ -76,7 +76,9 @@
     "ntfy_topic": ""
   },
   "verify": {
-    "max_checks_per_run": 5,
-    "tolerance_pct": 10
-  }
+    "max_checks_per_run": 4,
+    "monthly_budget": 240,
+    "tolerance_pct": 0
+  },
+  "max_price_age_days": 4
 }

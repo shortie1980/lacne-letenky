@@ -77,6 +77,8 @@ select.sort { margin-left: auto; border: 1px solid var(--border); background: va
 .price b { font-size: 22px; letter-spacing: -.02em; }
 .badge { display: inline-block; white-space: nowrap; font-size: 11.5px; font-weight: 600; border-radius: 6px; padding: 1px 6px; background: var(--good-soft); color: var(--good); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.muted { background: var(--surface-2); color: var(--muted); font-weight: 500; }
+.price .badges { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; margin-top: 2px; }
 .meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .spark { height: 34px; width: 100%; }
 .spark-label { font-size: 11px; color: var(--faint); display: flex; justify-content: space-between; margin-top: -4px; }
@@ -217,6 +219,7 @@ ol.steps li { margin-bottom: 3px; }
       </select>
     </div>
     <div class="toolbar"><div class="chips" id="originChips"></div></div>
+    <p class="sub" id="dealNote"></p>
     <div class="grid" id="dealGrid"></div>
   </section>
 
@@ -266,6 +269,12 @@ const flag = cc => cc && /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc]
 const plural = (n, one, few, many) => n === 1 ? one : (n >= 2 && n <= 4 ? few : many);
 const fmtDate = iso => { const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("sk-SK", { day: "numeric", month: "numeric" }); };
 const weekday = iso => new Date(iso + "T00:00:00").toLocaleDateString("sk-SK", { weekday: "short" });
+const priceOf = d => d.verified_price ?? d.price;
+function freshness(d) {
+  if (d.verified_price != null) return `<span class="badge">✓ overené naživo</span>`;
+  if (d.age == null) return `<span class="badge muted">neoverené</span>`;
+  return `<span class="badge muted">z cache ${d.age === 0 ? "dnes" : `spred ${d.age} ${d.age === 1 ? "dňa" : "dní"}`}</span>`;
+}
 const transfers = n => n === 0 ? "priamy let" : `${n} ${plural(n, "prestup", "prestupy", "prestupov")}`;
 const clone = o => JSON.parse(JSON.stringify(o));
 function ago(iso) {
@@ -443,19 +452,24 @@ function renderDeals() {
   $("#sort").value = S.sort;
 
   let list = all.filter(d => (S.region === "all" || d.region === S.region) && (S.origin === "all" || d.origin === S.origin));
-  const key = { value: d => d.price / d.limit, price: d => d.price, date: d => d.departure }[S.sort];
+  const key = { value: d => priceOf(d) / d.limit, price: d => priceOf(d), date: d => d.departure }[S.sort];
   list = list.slice().sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
 
+  const v = S.data?.verify;
+  $("#dealNote").innerHTML = v?.enabled
+    ? "Nové ponuky pred upozornením overujem naživo v Google Flights (<b>✓ overené</b>). Ostatné ceny sú z cache vyhľadávaní a môžu byť vyššie."
+    : "Ceny sú z cache vyhľadávaní iných ľudí a môžu byť už vyššie. Zapni si overovanie naživo (Nastavenia → Upozornenia).";
   if (!S.data) { $("#dealGrid").innerHTML = `<div class="empty card" style="grid-column:1/-1"><div class="big">🛫</div>Dáta sa ešte nevygenerovali. Po prvom behu vyhľadávania sa tu objavia ponuky.</div>`; return; }
   if (!list.length) { $("#dealGrid").innerHTML = `<div class="empty card" style="grid-column:1/-1"><div class="big">🔎</div>Momentálne nič pod tvojimi limitmi.<br>Pozri si záložku <a href="#" data-goto="prices">Ceny teraz</a>, kde je vidieť, koľko letenky stoja.</div>`; return; }
 
   $("#dealGrid").innerHTML = list.map((d, i) => {
-    const pct = Math.round((1 - d.price / d.limit) * 100);
+    const pct = Math.round((1 - priceOf(d) / d.limit) * 100);
+    const second = d.verified_price != null && d.aviasales ? ["Aviasales", d.aviasales, "Pozrieť aj na Aviasales"] : ["Google", d.google, "Porovnať na Google Flights"];
     return `<article class="card deal">
       <div class="deal-head">
         <div class="flag">${flag(d.country)}</div>
         <div class="route">${esc(d.origin)} → ${esc(d.city)}<small>${esc(regions[d.region] || "")}</small></div>
-        <div class="price"><b>${d.price} €</b><br><span class="badge">−${pct} % pod limitom</span></div>
+        <div class="price"><b>${priceOf(d)} €</b><div class="badges"><span class="badge">−${pct} % pod limitom</span>${freshness(d)}</div></div>
       </div>
       <div class="meta">
         <span>📅 ${weekday(d.departure)} ${fmtDate(d.departure)} – ${weekday(d.return)} ${fmtDate(d.return)}</span>
@@ -466,11 +480,11 @@ function renderDeals() {
       <div>${spark(d.destination, d.limit)}</div>
       <div class="actions">
         <a class="btn primary" href="${esc(safeUrl(d.buy))}" target="_blank" rel="noopener">🛒 Kúpiť</a>
-        <a class="btn" href="${esc(safeUrl(d.google))}" target="_blank" rel="noopener" title="Porovnať na Google Flights">Google</a>
+        <a class="btn" href="${esc(safeUrl(second[1]))}" target="_blank" rel="noopener" title="${second[2]}">${second[0]}</a>
         <div class="menu">
           <button class="btn ghost" data-menu="${i}" aria-label="Ďalšie možnosti">⋯</button>
           <div class="menu-pop" id="menu-${i}">
-            <button data-act="watch" data-code="${esc(d.destination)}" data-name="${esc(d.city)}" data-price="${d.price}">🔔 Nastaviť limit pre ${esc(d.city)}</button>
+            <button data-act="watch" data-code="${esc(d.destination)}" data-name="${esc(d.city)}" data-price="${priceOf(d)}">🔔 Nastaviť limit pre ${esc(d.city)}</button>
             <button data-act="exclude" data-code="${esc(d.destination)}">🚫 ${esc(d.city)} ma nezaujíma</button>
             <button data-act="exclude" data-code="${esc(d.country)}">🚫 Celá krajina ${flag(d.country)} ma nezaujíma</button>
           </div>
@@ -596,6 +610,9 @@ function renderSettings() {
     <h3>⚙️ Vyhľadávanie</h3>
     <div class="field"><label>Hľadať odlety na</label>
       <div class="seg" data-seg="months_ahead">${[2, 3, 6, 9, 12].map(n => `<button class="${c.months_ahead === n ? "on" : ""}" data-v="${n}">${n} mes.</button>`).join("")}</div></div>
+    <div class="field"><label>Ignorovať ceny z cache staršie ako</label>
+      <div class="seg" data-seg="max_price_age_days">${[1, 2, 3, 4, 7].map(n => `<button class="${(c.max_price_age_days ?? 4) === n ? "on" : ""}" data-v="${n}">${n} ${n === 1 ? "deň" : n < 5 ? "dni" : "dní"}</button>`).join("")}</div>
+      <span class="hint">Čím kratšie, tým presnejšie ceny, ale menej ponúk.</span></div>
     <div class="field"><label>Najviac prestupov jedným smerom</label>
       <div class="seg" data-seg="max_transfers">${[0, 1, 2, 3].map(n => `<button class="${c.max_transfers === n ? "on" : ""}" data-v="${n}">${n === 0 ? "len priame" : n}</button>`).join("")}</div></div>
     <div class="field"><label>Opakované upozornenie na tú istú trasu</label>
@@ -609,6 +626,9 @@ function renderSettings() {
   <div class="card section">
     <h3>📣 Upozornenia</h3>
     <p class="sub">Teams a e-mail idú cez Power Automate (nastavené v GitHub Secrets). Najrýchlejšia je push notifikácia na mobil cez aplikáciu <b>ntfy</b>.</p>
+    ${(() => { const v = S.data?.verify; return v?.enabled
+      ? `<div class="note" style="margin-bottom:12px">✓ <b>Overovanie cien naživo je zapnuté.</b> Tento mesiac použité ${v.used} z ${v.budget} overení.</div>`
+      : `<div class="note warn" style="margin-bottom:12px"><b>Overovanie cien naživo je vypnuté.</b> Ceny z cache môžu byť neaktuálne. Zapneš ho bezplatným kľúčom zo <a href="https://serpapi.com/users/sign_up" target="_blank" rel="noopener">serpapi.com</a> (250 overení mesačne), ktorý sa uloží ako GitHub Secret <code>SERPAPI_KEY</code>.</div>`; })()}
     <div class="field"><label for="ntfyIn">ntfy téma (push na mobil)</label>
       <div class="inline"><input type="text" id="ntfyIn" value="${esc(topic)}" placeholder="napr. letenky-a8f3k2x9" style="max-width:300px">
         <button class="btn" id="ntfyGen">Vygenerovať</button></div>

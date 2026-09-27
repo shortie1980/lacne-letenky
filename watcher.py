@@ -11,6 +11,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import shutil
 import sys
 from html import escape
@@ -158,6 +159,9 @@ def to_offer(it, places, cfg, today):
         return None
     if not rule["min_days"] <= days <= rule["max_days"]:
         return None
+    age = price_age(it.get("link"), today)
+    if age is not None and age > cfg.get("max_price_age_days", 4):
+        return None
     return {
         "origin": it.get("origin"),
         "origin_airport": it.get("origin_airport") or it.get("origin"),
@@ -174,7 +178,19 @@ def to_offer(it, places, cfg, today):
         "transfers": transfers,
         "airline": it.get("airline", ""),
         "link": "https://www.aviasales.com" + it["link"] if it.get("link") else None,
+        "age": age,
     }
+
+
+def price_age(link, today):
+    """Pred koľkými dňami niekto túto cenu našiel (z parametra search_date v odkaze)."""
+    m = re.search(r"search_date=(\d{2})(\d{2})(\d{4})", link or "")
+    if not m:
+        return None
+    try:
+        return (today - dt.date(int(m[3]), int(m[2]), int(m[1]))).days
+    except ValueError:
+        return None
 
 
 def is_deal(o):
@@ -236,23 +252,47 @@ def verify_price(d, api_key):
     return min(prices) if prices else None
 
 
-def verify_deals(fresh, cfg, api_key):
-    checks_left = cfg["verify"]["max_checks_per_run"]
+def verify_key(d):
+    return f"{d['origin']}-{d['destination']}-{d['departure']}-{d['return']}"
+
+
+def apply_verified(offers, state, now):
+    """Použije overenia z posledných 12 hodín: overenú cenu doplní, neplatné ponuky označí."""
+    cache = state.setdefault("verified", {})
+    for k in [k for k, v in cache.items() if now - dt.datetime.fromisoformat(v["at"]) > dt.timedelta(hours=12)]:
+        del cache[k]
+    for o in offers:
+        v = cache.get(verify_key(o))
+        if v:
+            o["verified_price"] = v["price"]
+
+
+def verification_ok(d, cfg):
     tolerance = 1 + cfg["verify"]["tolerance_pct"] / 100
+    return d.get("verified_price") is None or (d["limit"] and d["verified_price"] <= d["limit"] * tolerance)
+
+
+def verify_deals(fresh, state, cfg, api_key, now):
+    """Overí nové ponuky naživo v Google Flights, v rámci limitu na beh aj na mesiac."""
+    usage = state.setdefault("verify_usage", {})
+    month = now.strftime("%Y-%m")
+    if usage.get("month") != month:
+        usage.update(month=month, count=0)
+    checks_left = cfg["verify"]["max_checks_per_run"]
+    cache = state.setdefault("verified", {})
     kept = []
     for d in fresh:
-        if checks_left <= 0:
-            kept.append(d)
-            continue
-        checks_left -= 1
-        real = verify_price(d, api_key)
-        if real is None:
-            kept.append(d)
-        elif real <= d["limit"] * tolerance:
-            d["verified_price"] = real
+        if "verified_price" not in d and checks_left > 0 and usage["count"] < cfg["verify"]["monthly_budget"]:
+            checks_left -= 1
+            usage["count"] += 1
+            real = verify_price(d, api_key)
+            if real is not None:
+                d["verified_price"] = real
+                cache[verify_key(d)] = {"price": real, "at": now.isoformat()}
+        if verification_ok(d, cfg):
             kept.append(d)
         else:
-            print(f"  Zahodené: {d['origin']}→{d['city']} {d['price']} € (Google Flights ukazuje {real} €)")
+            print(f"  Zahodené: {d['origin']}→{d['city']} {d['price']} € (Google Flights teraz {d['verified_price']} €)")
     return kept
 
 
@@ -287,8 +327,35 @@ def google_flights_link(d):
 
 
 def buy_link(d):
-    """Odkaz priamo na konkrétny let na Aviasales, kde sa dá hneď kúpiť."""
+    """Overená ponuka → Google Flights (tam cena platí), inak konkrétny let na Aviasales."""
+    if d.get("verified_price") is not None:
+        return google_flights_link(d)
     return d["link"] or google_flights_link(d)
+
+
+def freshness_text(d):
+    if d.get("verified_price") is not None:
+        return "✓ cena overená naživo v Google Flights"
+    age = d.get("age")
+    if age is None:
+        return "cena z cache, neoverená"
+    return "cena z cache nájdená dnes" if age == 0 else f"cena z cache spred {age} {plural(age, 'dňa', 'dní', 'dní')}"
+
+
+def second_link(d):
+    """Druhý odkaz popri Kúpiť: pri overenej ponuke Aviasales, inak Google Flights."""
+    if d.get("verified_price") is not None and d.get("link"):
+        return "pozrieť aj na Aviasales", d["link"]
+    return "porovnať na Google Flights", google_flights_link(d)
+
+
+def other_links_md(d):
+    label, url = second_link(d)
+    return f"**[🛒 Kúpiť túto letenku]({buy_link(d)})** · [{label}]({url})"
+
+
+def shown_price(d):
+    return d["verified_price"] if d.get("verified_price") is not None else d["price"]
 
 
 def region_label(region, cfg):
@@ -311,9 +378,7 @@ def build_card(deals, cfg, dashboard_url):
         "wrap": True,
     }]
     for d in deals:
-        price = f"{d['price']} €"
-        if "verified_price" in d:
-            price += f" (Google Flights: {d['verified_price']} €)"
+        price = f"{shown_price(d)} €"
         body.append({
             "type": "Container",
             "separator": True,
@@ -327,10 +392,11 @@ def build_card(deals, cfg, dashboard_url):
                 },
                 {"type": "TextBlock", "text": details_text(d, cfg), "isSubtle": True,
                  "spacing": "None", "wrap": True},
+                {"type": "TextBlock", "text": freshness_text(d), "size": "Small", "spacing": "None", "wrap": True,
+                 "color": "Good" if d.get("verified_price") is not None else "Default"},
                 {
                     "type": "TextBlock",
-                    "text": (f"**[🛒 Kúpiť túto letenku]({buy_link(d)})** · "
-                             f"[porovnať na Google Flights]({google_flights_link(d)})"),
+                    "text": other_links_md(d),
                     "spacing": "Small",
                     "wrap": True,
                 },
@@ -356,8 +422,8 @@ def build_card(deals, cfg, dashboard_url):
 
 
 def build_email(deals, cfg, dashboard_url):
-    cheapest = min(deals, key=lambda d: d["price"])
-    subject = f"✈️ {cheapest['origin']} → {cheapest['city']} za {cheapest['price']} €"
+    cheapest = min(deals, key=shown_price)
+    subject = f"✈️ {cheapest['origin']} → {cheapest['city']} za {shown_price(cheapest)} €"
     rest = len(deals) - 1
     if rest == 1:
         subject += " a ďalšia lacná letenka"
@@ -366,9 +432,9 @@ def build_email(deals, cfg, dashboard_url):
 
     rows = []
     for d in deals:
-        price = f"{d['price']} €"
-        if "verified_price" in d:
-            price += f"<br><span style='font-size:12px;color:#666'>Google Flights: {d['verified_price']} €</span>"
+        color = "#0f8a4f" if d.get("verified_price") is not None else "#888"
+        price = (f"{shown_price(d)} €<br><span style='font-size:12px;font-weight:400;color:{color}'>"
+                 f"{escape(freshness_text(d))}</span>")
         rows.append(f"""
 <tr>
   <td style="padding:14px 12px;border-bottom:1px solid #e5e7eb">
@@ -378,7 +444,7 @@ def build_email(deals, cfg, dashboard_url):
     </div>
     <div style="font-size:12px;color:#888;margin-top:2px">
       {escape(region_label(d['region'], cfg))} · tvoj limit {d['limit']} € ·
-      <a href="{escape(google_flights_link(d))}" style="color:#888">porovnať na Google Flights</a>
+      <a href="{escape(second_link(d)[1])}" style="color:#888">{escape(second_link(d)[0])}</a>
     </div>
   </td>
   <td style="padding:14px 12px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap">
@@ -418,14 +484,14 @@ def send_ntfy(deals, topic, cfg, dashboard_url):
     for d in top:
         payload = {
             "topic": topic,
-            "title": f"✈️ {d['origin']} → {d['city']} za {d['price']} €",
-            "message": f"{details_text(d, cfg)} · limit {d['limit']} €",
+            "title": f"✈️ {d['origin']} → {d['city']} za {shown_price(d)} €",
+            "message": f"{details_text(d, cfg)} · limit {d['limit']} € · {freshness_text(d)}",
             "click": buy_link(d),
             "tags": ["airplane"],
             "priority": 4,
             "actions": [
                 {"action": "view", "label": "Kúpiť", "url": buy_link(d)},
-                {"action": "view", "label": "Google Flights", "url": google_flights_link(d)},
+                {"action": "view", "label": second_link(d)[0], "url": second_link(d)[1]},
             ],
         }
         requests.post(NTFY_URL, json=payload, timeout=20).raise_for_status()
@@ -473,6 +539,8 @@ def public_offer(o, cfg):
     out = {k: o[k] for k in keys}
     out["buy"] = buy_link(o)
     out["google"] = google_flights_link(o)
+    out["aviasales"] = o["link"]
+    out["age"] = o.get("age")
     if "verified_price" in o:
         out["verified_price"] = o["verified_price"]
     return out
@@ -501,7 +569,7 @@ def update_history(history, cheapest_dest, cfg, today):
     return history
 
 
-def write_site(offers, deals, history, places, country_names, cfg, now):
+def write_site(offers, deals, history, places, country_names, cfg, now, verify_info):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if WEB_SOURCE.exists():
         shutil.copyfile(WEB_SOURCE, SITE_DIR / "index.html")
@@ -523,6 +591,8 @@ def write_site(offers, deals, history, places, country_names, cfg, now):
         "deals": [public_offer(d, cfg) for d in deals[:200]],
         "cheapest": by_region,
         "offers_checked": len(offers),
+        "verify": verify_info,
+        "max_price_age_days": cfg.get("max_price_age_days", 4),
     })
     write_json(HISTORY_FILE, history)
 
@@ -580,23 +650,30 @@ def main():
     if calls and failures == calls:
         sys.exit("Všetky dopyty na Travelpayouts zlyhali.")
 
-    deals = sorted(cheapest_by([o for o in offers if is_deal(o)], lambda o: f"{o['origin']}-{o['destination']}").values(),
+    state = read_json(STATE_FILE, {"notified": {}})
+    apply_verified(offers, state, now)
+    candidates = [o for o in offers if is_deal(o) and verification_ok(o, cfg)]
+    deals = sorted(cheapest_by(candidates, lambda o: f"{o['origin']}-{o['destination']}").values(),
                    key=lambda d: d["price"] / d["limit"])
 
-    state = read_json(STATE_FILE, {"notified": {}})
     fresh = filter_new(deals, state, cfg, now)[:cfg["max_alerts_per_run"] * 2]
     serpapi_key = os.environ.get("SERPAPI_KEY")
-    if serpapi_key and fresh:
-        fresh = verify_deals(fresh, cfg, serpapi_key)
+    if serpapi_key and fresh and not args.dry_run:
+        fresh = verify_deals(fresh, state, cfg, serpapi_key, now)
+        deals = [d for d in deals if verification_ok(d, cfg)]
     fresh = fresh[:cfg["max_alerts_per_run"]]
 
     print(f"\nPonúk pod limitom: {len(deals)}, nových na odoslanie: {len(fresh)}")
     for d in fresh:
-        print(f"  {d['origin']} → {d['city']} ({d['country']}): {d['price']} € · "
+        print(f"  {d['origin']} → {d['city']} ({d['country']}): {shown_price(d)} € · {freshness_text(d)} · "
               f"{d['departure']} – {d['return']} · {transfers_text(d['transfers'])}")
 
     history = update_history(read_json(HISTORY_FILE, {}), cheapest_by(offers, lambda o: o["destination"]), cfg, today)
-    write_site(offers, deals, history, places, country_names, cfg, now)
+    write_site(offers, deals, history, places, country_names, cfg, now, {
+        "enabled": bool(serpapi_key),
+        "used": state.get("verify_usage", {}).get("count", 0),
+        "budget": cfg["verify"]["monthly_budget"],
+    })
 
     if args.dry_run:
         if fresh:

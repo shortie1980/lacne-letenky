@@ -387,7 +387,8 @@ def kiwi_range_search(cfg, today, fly_to, rule, one_for_city, price_to=None):
         "flyFrom": ",".join(cfg["origins"]), "flyTo": fly_to,
         "departureDate": kiwi_date((today + dt.timedelta(days=1)).isoformat()),
         "departureDateTo": kiwi_date(last.isoformat()),
-        "nights_in_dst_from": rule["min_days"], "nights_in_dst_to": rule["max_days"],
+        # Kiwi počíta noci od príletu, my dni od odletu po návrat → o deň širšie, presne filtruje fits_rules
+        "nights_in_dst_from": max(1, rule["min_days"] - 1), "nights_in_dst_to": rule["max_days"],
         "max_sector_stopovers": cfg["max_transfers"],
         "one_for_city": one_for_city,
     }
@@ -430,18 +431,19 @@ def watch_live(cfg, places, today, budget):
     return offers, used
 
 
-def explore_live(cfg, places, country_names, today, state, budget):
-    """Prehľadá naživo krajiny v diaľkových regiónoch. Každý beh pokračuje tam, kde predošlý skončil."""
+def explore_live(cfg, places, country_names, today, state, budget, now):
+    """Prehľadá naživo krajiny v diaľkových regiónoch. Každý beh pokračuje tam, kde predošlý skončil;
+    nálezy z ostatných krajín sa berú z predošlých behov (platia cache_hours)."""
     excluded = set(cfg.get("excluded", []))
     combos = [(region, cc) for region, codes in EXPLORE_COUNTRIES.items()
               if cfg["regions"].get(region, {}).get("enabled") for cc in codes.split()
               if cc not in excluded and limit_for(cc, cc, region, cfg)]
+    store = state.setdefault("explore", {})
     if not combos:
         return []
     cursor = state.get("explore_cursor", 0) % len(combos)
     batch = [combos[(cursor + i) % len(combos)] for i in range(min(budget, len(combos)))]
     state["explore_cursor"] = (cursor + len(batch)) % len(combos)
-    offers = []
     for region, cc in batch:
         try:
             its = kiwi_range_search(cfg, today, country_names.get(cc, cc), region_rule(region, cfg), True,
@@ -450,9 +452,21 @@ def explore_live(cfg, places, country_names, today, state, budget):
             print(f"  Kiwi hľadanie zlyhalo ({cc}): {e}", file=sys.stderr)
             continue
         found = [o for o in live_offers(its, places, cfg) if o["country"] == cc]
-        offers.extend(found)
+        store[cc] = {"at": now.isoformat(), "offers": found}
         print(f"  Naživo {country_names.get(cc, cc)}: " +
               (", ".join(f"{o['city']} {o['price']} €" for o in sorted(found, key=lambda o: o['price'])[:4]) or "nič pod limitom"))
+
+    ttl = dt.timedelta(hours=cfg["live"]["cache_hours"])
+    wanted = {cc for _, cc in combos}
+    offers = []
+    for cc in list(store):
+        if cc not in wanted or now - dt.datetime.fromisoformat(store[cc]["at"]) > ttl:
+            del store[cc]
+            continue
+        for o in store[cc]["offers"]:
+            o = dict(o, limit=limit_for(o["destination"], o["country"], o["region"], cfg))   # limity sa mohli zmeniť
+            if dt.date.fromisoformat(o["departure"]) > today and fits_rules(o, cfg):
+                offers.append(o)
     return offers
 
 
@@ -809,7 +823,7 @@ def main():
     # Sledované destinácie priamo naživo v Kiwi
     watch_offers, _ = watch_live(cfg, places, today, cfg["live"]["max_watch_searches"])
     offers.extend(watch_offers)
-    offers.extend(explore_live(cfg, places, country_names, today, state, cfg["live"]["explore_per_run"]))
+    offers.extend(explore_live(cfg, places, country_names, today, state, cfg["live"]["explore_per_run"], now))
 
     def pick_deals():
         best = {}

@@ -6,7 +6,8 @@ do celého sveta. Keď nájde cenu pod tvojím limitom, pošle ti upozornenie:
 - **push notifikáciu na mobil** cez aplikáciu ntfy (najrýchlejšie),
 - **správu do Teams** a **e-mail** cez Power Automate.
 
-Pri každej ponuke je tlačidlo **Kúpiť**, ktoré otvorí presne ten let na Aviasales. Tam si vyberieš predajcu a zaplatíš.
+Upozornenia chodia **len na živé ceny overené na Kiwi.com**. Tlačidlo **Kúpiť** otvorí rovno rezerváciu
+konkrétnej letenky na Kiwi.com za zobrazenú cenu.
 
 **Webová aplikácia** (`https://<tvoje-meno>.github.io/lacne-letenky/`) funguje aj na mobile:
 - **Ponuky:** všetky aktuálne ponuky pod limitom, filtre podľa regiónu a letiska, graf vývoja ceny.
@@ -18,9 +19,13 @@ Pri každej ponuke je tlačidlo **Kúpiť**, ktoré otvorí presne ten let na Av
 
 ```
 GitHub Actions (každých 30 min, zadarmo)
-  └─ watcher.py ── Travelpayouts API (ceny) ──► nájde ponuky pod limitom
-        ├─► ntfy push · Teams · e-mail
-        └─► dáta pre web ──► GitHub Pages (aplikácia)
+  └─ watcher.py
+       ├─ Travelpayouts (cache vyhľadávaní) ── kandidáti po celom svete
+       ├─ Kiwi.com MCP (živé ceny) ─┬─ overí kandidátov (±2 dni okolo termínu)
+       │                            ├─ prehľadá sledované destinácie na celé obdobie
+       │                            └─ prehľadá hlavné krajiny v Ázii a Amerike (postupne)
+       ├─► ntfy push · Teams · e-mail (len živé ceny)
+       └─► dáta pre web ──► GitHub Pages (aplikácia)
 Aplikácia ── uloží config.json cez GitHub API ──► spustí nové vyhľadávanie
 ```
 
@@ -49,7 +54,6 @@ Zaregistruj sa na https://www.travelpayouts.com, otvor **Profile → API token**
    - `TRAVELPAYOUTS_TOKEN`: token z kroku 1
    - `TEAMS_WEBHOOK_URL`: URL z kroku 2
    - `EMAIL_TO`: tvoj e-mail
-   - `SERPAPI_KEY`: *(voliteľné)* slúži na overenie cien cez Google Flights
 4. **Settings → Pages → Source: GitHub Actions**
 5. **Actions → Lacné letenky → Run workflow**. Po asi 2 minútach je aplikácia na `https://<meno>.github.io/lacne-letenky/`.
 
@@ -73,9 +77,10 @@ python watcher.py --test-notify      # pošle skúšobné upozornenie (potrebuje
 ```
 
 ## Dobré vedieť
-- Ceny pochádzajú z **cache vyhľadávaní** na Aviasales. Väčšinou sedia a líšia sa o pár eur,
-  no výpredaje môžu zmiznúť aj za pár hodín.
-- Aviasales zobrazuje ceny predvolene v dolároch. Menu si prepneš vpravo hore a stránka si ju zapamätá.
+- Ceny z **cache** (Aviasales) pri diaľkových letoch často nesedia, napr. Krabi 214 € v cache a 615 € naživo.
+  Preto sa každá ponuka pred upozornením overí naživo na Kiwi.com.
+- Kiwi MCP (`mcp.kiwi.com`) je verejná služba bez kľúča. Aplikácia ju používa striedmo: najviac
+  približne 35 vyhľadávaní za beh.
 - Tú istú trasu aplikácia pošle znova až po nastavenom počte dní, alebo skôr, ak výrazne zlacnie.
 - Ak repozitár 60 dní nikto neupraví, GitHub môže plánované behy pozastaviť. Príde ti o tom e-mail
   a obnovíš ich jedným klikom v záložke Actions.

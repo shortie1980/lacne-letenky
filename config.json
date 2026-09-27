@@ -75,10 +75,11 @@
   "notify": {
     "ntfy_topic": ""
   },
-  "verify": {
-    "max_checks_per_run": 4,
-    "monthly_budget": 240,
-    "tolerance_pct": 0
-  },
-  "max_price_age_days": 4
+  "max_price_age_days": 4,
+  "live": {
+    "max_verify_per_run": 10,
+    "max_watch_searches": 10,
+    "explore_per_run": 14,
+    "cache_hours": 6
+  }
 }

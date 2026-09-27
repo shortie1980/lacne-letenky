@@ -257,7 +257,7 @@ const LS = { get(k) { try { return localStorage.getItem(k); } catch { return nul
 const S = {
   data: null, history: {}, places: { cities: [], countries: [] },
   config: null, draft: null, sha: null,
-  region: LS.get("region") || "all", origin: "all", sort: LS.get("sort") || "value",
+  region: LS.get("region") || "all", origin: "all", sort: LS.get("sort") || "value", liveOnly: LS.get("liveOnly") !== "0",
   repo: detectRepo(), token: LS.get("gh_token") || "",
 };
 
@@ -269,9 +269,9 @@ const flag = cc => cc && /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc]
 const plural = (n, one, few, many) => n === 1 ? one : (n >= 2 && n <= 4 ? few : many);
 const fmtDate = iso => { const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("sk-SK", { day: "numeric", month: "numeric" }); };
 const weekday = iso => new Date(iso + "T00:00:00").toLocaleDateString("sk-SK", { weekday: "short" });
-const priceOf = d => d.verified_price ?? d.price;
+const priceOf = d => d.price;
 function freshness(d) {
-  if (d.verified_price != null) return `<span class="badge">✓ overené naživo</span>`;
+  if (d.live) return `<span class="badge">✓ živá cena</span>`;
   if (d.age == null) return `<span class="badge muted">neoverené</span>`;
   return `<span class="badge muted">z cache ${d.age === 0 ? "dnes" : `spred ${d.age} ${d.age === 1 ? "dňa" : "dní"}`}</span>`;
 }
@@ -439,7 +439,8 @@ function spark(code, limit) {
 }
 
 function renderDeals() {
-  const all = S.data?.deals || [];
+  const all = (S.data?.deals || []).filter(d => !S.liveOnly || d.live);
+  const liveCount = (S.data?.deals || []).filter(d => d.live).length, totalCount = (S.data?.deals || []).length;
   $("#dealCount").textContent = all.length;
   const regions = S.data?.regions || {};
   const counts = {}; all.forEach(d => counts[d.region] = (counts[d.region] || 0) + 1);
@@ -455,16 +456,18 @@ function renderDeals() {
   const key = { value: d => priceOf(d) / d.limit, price: d => priceOf(d), date: d => d.departure }[S.sort];
   list = list.slice().sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
 
-  const v = S.data?.verify;
-  $("#dealNote").innerHTML = v?.enabled
-    ? "Nové ponuky pred upozornením overujem naživo v Google Flights (<b>✓ overené</b>). Ostatné ceny sú z cache vyhľadávaní a môžu byť vyššie."
-    : "Ceny sú z cache vyhľadávaní iných ľudí a môžu byť už vyššie. Zapni si overovanie naživo (Nastavenia → Upozornenia).";
+  $("#dealNote").innerHTML = `<label class="inline" style="cursor:pointer"><span class="switch"><input type="checkbox" id="liveOnly" ${S.liveOnly ? "checked" : ""}><span></span></span>
+    <span><b>Len živé ceny</b> (${liveCount} z ${totalCount})</span></label>
+    <span style="display:block;margin-top:6px">${S.liveOnly
+      ? "Zobrazujem len ponuky s cenou overenou naživo na Kiwi.com. Upozornenia chodia len na tieto."
+      : "Ponuky so štítkom „z cache“ sú z vyhľadávaní iných ľudí a pri diaľkových letoch býva cena v skutočnosti vyššia. Overujem ich postupne."}</span>`;
+  $("#liveOnly").onchange = e => { S.liveOnly = e.target.checked; LS.set("liveOnly", S.liveOnly ? "1" : "0"); renderDeals(); };
   if (!S.data) { $("#dealGrid").innerHTML = `<div class="empty card" style="grid-column:1/-1"><div class="big">🛫</div>Dáta sa ešte nevygenerovali. Po prvom behu vyhľadávania sa tu objavia ponuky.</div>`; return; }
   if (!list.length) { $("#dealGrid").innerHTML = `<div class="empty card" style="grid-column:1/-1"><div class="big">🔎</div>Momentálne nič pod tvojimi limitmi.<br>Pozri si záložku <a href="#" data-goto="prices">Ceny teraz</a>, kde je vidieť, koľko letenky stoja.</div>`; return; }
 
   $("#dealGrid").innerHTML = list.map((d, i) => {
     const pct = Math.round((1 - priceOf(d) / d.limit) * 100);
-    const second = d.verified_price != null && d.aviasales ? ["Aviasales", d.aviasales, "Pozrieť aj na Aviasales"] : ["Google", d.google, "Porovnať na Google Flights"];
+    const second = ["Google", d.google, "Porovnať na Google Flights"];
     return `<article class="card deal">
       <div class="deal-head">
         <div class="flag">${flag(d.country)}</div>
@@ -479,7 +482,7 @@ function renderDeals() {
       </div>
       <div>${spark(d.destination, d.limit)}</div>
       <div class="actions">
-        <a class="btn primary" href="${esc(safeUrl(d.buy))}" target="_blank" rel="noopener">🛒 Kúpiť</a>
+        <a class="btn primary" href="${esc(safeUrl(d.buy))}" target="_blank" rel="noopener" title="${d.live ? "Rezervácia na Kiwi.com" : "Pozrieť na Aviasales"}">🛒 ${d.live ? "Kúpiť na Kiwi" : "Pozrieť"}</a>
         <a class="btn" href="${esc(safeUrl(second[1]))}" target="_blank" rel="noopener" title="${second[2]}">${second[0]}</a>
         <div class="menu">
           <button class="btn ghost" data-menu="${i}" aria-label="Ďalšie možnosti">⋯</button>
@@ -626,9 +629,8 @@ function renderSettings() {
   <div class="card section">
     <h3>📣 Upozornenia</h3>
     <p class="sub">Teams a e-mail idú cez Power Automate (nastavené v GitHub Secrets). Najrýchlejšia je push notifikácia na mobil cez aplikáciu <b>ntfy</b>.</p>
-    ${(() => { const v = S.data?.verify; return v?.enabled
-      ? `<div class="note" style="margin-bottom:12px">✓ <b>Overovanie cien naživo je zapnuté.</b> Tento mesiac použité ${v.used} z ${v.budget} overení.</div>`
-      : `<div class="note warn" style="margin-bottom:12px"><b>Overovanie cien naživo je vypnuté.</b> Ceny z cache môžu byť neaktuálne. Zapneš ho bezplatným kľúčom zo <a href="https://serpapi.com/users/sign_up" target="_blank" rel="noopener">serpapi.com</a> (250 overení mesačne), ktorý sa uloží ako GitHub Secret <code>SERPAPI_KEY</code>.</div>`; })()}
+    <div class="note" style="margin-bottom:12px">✓ <b>Upozornenia chodia len na živé ceny z Kiwi.com</b>, aby ťa neprekvapila vyššia cena pri kúpe.
+      Sledované destinácie a hlavné krajiny v Ázii a Amerike prehľadávam naživo, ostatné ponuky overujem postupne.</div>
     <div class="field"><label for="ntfyIn">ntfy téma (push na mobil)</label>
       <div class="inline"><input type="text" id="ntfyIn" value="${esc(topic)}" placeholder="napr. letenky-a8f3k2x9" style="max-width:300px">
         <button class="btn" id="ntfyGen">Vygenerovať</button></div>

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Sleduje lacné letenky cez Travelpayouts (Aviasales), posiela upozornenia
+"""Sleduje lacné letenky: kandidátov hľadá cez Travelpayouts (Aviasales, cache), naživo ich overuje
+a sledované destinácie prehľadáva cez Kiwi.com. Posiela upozornenia
 (Teams + e-mail cez Power Automate, push cez ntfy) a pripravuje dáta pre webovú aplikáciu.
 
 Použitie:
@@ -32,7 +33,7 @@ TP_PRICES_URL = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates"
 TP_CITIES_URL = "https://api.travelpayouts.com/data/en/cities.json"
 TP_AIRPORTS_URL = "https://api.travelpayouts.com/data/en/airports.json"
 TP_COUNTRIES_URL = "https://api.travelpayouts.com/data/en/countries.json"
-SERPAPI_URL = "https://serpapi.com/search.json"
+KIWI_MCP_URL = "https://mcp.kiwi.com/"
 NTFY_URL = "https://ntfy.sh"
 
 HISTORY_DAYS = 120
@@ -52,6 +53,7 @@ REGION_COUNTRIES = {
 COUNTRY_TO_REGION = {
     code: region for region, codes in REGION_COUNTRIES.items() for code in codes.split()
 }
+AIRPORT_CITY = {}   # IATA letiska -> IATA mesta, naplní load_places()
 
 
 # ─── Súbory ──────────────────────────────────────────────────────────────────
@@ -79,9 +81,12 @@ def load_places():
     airports = requests.get(TP_AIRPORTS_URL, timeout=60).json()
     countries = requests.get(TP_COUNTRIES_URL, timeout=60).json()
     places = {}
+    city_names = {c["code"]: c.get("name") or c["code"] for c in cities if c.get("code")}
     for a in airports:
         if a.get("code") and a.get("country_code"):
-            places[a["code"]] = (a.get("name") or a["code"], a["country_code"])
+            city = a.get("city_code") or a["code"]
+            AIRPORT_CITY[a["code"]] = city
+            places[a["code"]] = (city_names.get(city) or a.get("name") or a["code"], a["country_code"])
     for c in cities:
         if c.get("code") and c.get("country_code"):
             places[c["code"]] = (c.get("name") or c["code"], c["country_code"])
@@ -227,73 +232,225 @@ def filter_new(deals, state, cfg, now):
     return balanced
 
 
-# ─── Overenie cez Google Flights (voliteľné) ─────────────────────────────────
+# ─── Kiwi.com: živé ceny ─────────────────────────────────────────────────────
 
-def verify_price(d, api_key):
-    params = {
-        "engine": "google_flights",
-        "departure_id": d["origin_airport"],
-        "arrival_id": d["destination_airport"],
-        "outbound_date": d["departure"],
-        "return_date": d["return"],
-        "currency": "EUR",
-        "hl": "en",
-        "api_key": api_key,
-    }
+class KiwiError(Exception):
+    pass
+
+
+def kiwi_search(arguments):
+    """Zavolá nástroj search-flight na verejnom MCP serveri Kiwi.com. Vráti zoznam itinerárov."""
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "search-flight", "arguments": {"currency": "EUR", "sort": "price", **arguments}}}
     try:
-        r = requests.get(SERPAPI_URL, params=params, timeout=90)
+        r = requests.post(KIWI_MCP_URL, json=body, timeout=90, headers={
+            "Accept": "application/json, text/event-stream",
+            "User-Agent": "lacne-letenky/1.0 (osobne sledovanie cien)",
+        })
         r.raise_for_status()
-        j = r.json()
-    except (requests.RequestException, ValueError) as e:
-        print(f"  Overenie zlyhalo ({d['origin']}→{d['destination']}): {e}", file=sys.stderr)
+    except requests.RequestException as e:
+        raise KiwiError(str(e)) from e
+    payload = None
+    for line in r.text.splitlines():
+        if line.startswith("data:"):
+            payload = json.loads(line[5:])
+    if payload is None and r.headers.get("content-type", "").startswith("application/json"):
+        payload = r.json()
+    if not payload or "error" in payload:
+        raise KiwiError(str((payload or {}).get("error", "prázdna odpoveď")))
+    result = payload["result"]
+    data = result.get("structuredContent")
+    if data is None:
+        data = json.loads(result["content"][0]["text"])
+    if data.get("error"):
+        raise KiwiError(str(data["error"]))
+    return data.get("itineraries", [])
+
+
+def kiwi_date(iso):
+    y, m, d = iso.split("-")
+    return f"{d}/{m}/{y}"
+
+
+def kiwi_offer(it, origin, places, cfg, destination=None):
+    """Prevedie itinerár z Kiwi na ponuku (živá cena, odkaz na rezerváciu)."""
+    out, back = it.get("outbound"), it.get("inbound")
+    if not out or not back or not out.get("route"):
         return None
-    prices = [f["price"] for f in j.get("best_flights", []) + j.get("other_flights", [])
-              if isinstance(f.get("price"), (int, float))]
-    return min(prices) if prices else None
+    airport = out["route"][-1]
+    dest = destination or AIRPORT_CITY.get(airport, airport)
+    city, country = places.get(dest) or places.get(airport) or (out["segments"][-1].get("toCity", airport), "")
+    region = COUNTRY_TO_REGION.get(country, "other")
+    dep, ret = out["departureTime"][:10], back["departureTime"][:10]
+    days = (dt.date.fromisoformat(ret) - dt.date.fromisoformat(dep)).days
+    return {
+        "origin": origin,
+        "origin_airport": out["route"][0],
+        "destination": dest,
+        "destination_airport": airport,
+        "city": city,
+        "country": country,
+        "region": region,
+        "price": round(it["price"]),
+        "limit": limit_for(dest, country, region, cfg),
+        "departure": dep,
+        "return": ret,
+        "days": days,
+        "transfers": max(out.get("stops", 0), back.get("stops", 0)),
+        "airline": (out.get("segments") or [{}])[0].get("carrier", ""),
+        "link": it.get("bookingUrl"),
+        "age": 0,
+        "live": True,
+    }
+
+
+def fits_rules(o, cfg):
+    rule = region_rule(o["region"], cfg)
+    return o["transfers"] <= cfg["max_transfers"] and rule["min_days"] <= o["days"] <= rule["max_days"]
 
 
 def verify_key(d):
     return f"{d['origin']}-{d['destination']}-{d['departure']}-{d['return']}"
 
 
-def apply_verified(offers, state, now):
-    """Použije overenia z posledných 12 hodín: overenú cenu doplní, neplatné ponuky označí."""
+def apply_verified(offers, state, cfg, now):
+    """Nahradí ponuky z cache výsledkom živého overenia z posledných hodín (ak existuje)."""
     cache = state.setdefault("verified", {})
-    for k in [k for k, v in cache.items() if now - dt.datetime.fromisoformat(v["at"]) > dt.timedelta(hours=12)]:
+    ttl = dt.timedelta(hours=cfg["live"]["cache_hours"])
+    for k in [k for k, v in cache.items() if now - dt.datetime.fromisoformat(v["at"]) > ttl]:
         del cache[k]
     for o in offers:
         v = cache.get(verify_key(o))
         if v:
-            o["verified_price"] = v["price"]
+            merge_live(o, v["live"])
 
 
-def verification_ok(d, cfg):
-    tolerance = 1 + cfg["verify"]["tolerance_pct"] / 100
-    return d.get("verified_price") is None or (d["limit"] and d["verified_price"] <= d["limit"] * tolerance)
+def merge_live(o, live):
+    if live is None:
+        o["unavailable"] = True
+        return
+    for k in ("price", "departure", "return", "days", "transfers", "airline", "link",
+              "origin_airport", "destination_airport"):
+        o[k] = live[k]
+    o["age"], o["live"] = 0, True
 
 
-def verify_deals(fresh, state, cfg, api_key, now):
-    """Overí nové ponuky naživo v Google Flights, v rámci limitu na beh aj na mesiac."""
-    usage = state.setdefault("verify_usage", {})
-    month = now.strftime("%Y-%m")
-    if usage.get("month") != month:
-        usage.update(month=month, count=0)
-    checks_left = cfg["verify"]["max_checks_per_run"]
+def verification_ok(d):
+    return not d.get("unavailable")
+
+
+def verify_live(candidates, state, cfg, places, now, budget):
+    """Overí ponuky z cache naživo v Kiwi (±2 dni okolo termínu). Vráti počet vyhľadávaní."""
     cache = state.setdefault("verified", {})
-    kept = []
-    for d in fresh:
-        if "verified_price" not in d and checks_left > 0 and usage["count"] < cfg["verify"]["monthly_budget"]:
-            checks_left -= 1
-            usage["count"] += 1
-            real = verify_price(d, api_key)
-            if real is not None:
-                d["verified_price"] = real
-                cache[verify_key(d)] = {"price": real, "at": now.isoformat()}
-        if verification_ok(d, cfg):
-            kept.append(d)
-        else:
-            print(f"  Zahodené: {d['origin']}→{d['city']} {d['price']} € (Google Flights teraz {d['verified_price']} €)")
-    return kept
+    used = 0
+    for d in candidates:
+        if d.get("live") or d.get("unavailable") or used >= budget:
+            continue
+        key = verify_key(d)
+        used += 1
+        try:
+            its = kiwi_search({
+                "flyFrom": d["origin"], "flyTo": d["destination"],
+                "departureDate": kiwi_date(d["departure"]), "departureDateFlexDays": 2,
+                "returnDate": kiwi_date(d["return"]), "returnDateFlexDays": 2,
+                "max_sector_stopovers": cfg["max_transfers"],
+            })
+        except KiwiError as e:
+            print(f"  Kiwi overenie zlyhalo ({d['origin']}→{d['city']}): {e}", file=sys.stderr)
+            continue
+        live = next((o for o in (kiwi_offer(it, d["origin"], places, cfg, d["destination"]) for it in its)
+                     if o and fits_rules(o, cfg)), None)
+        before = d["price"]
+        merge_live(d, live)
+        cache[key] = {"at": now.isoformat(), "live": live}
+        status = "nedostupné" if live is None else f"naživo {live['price']} €"
+        print(f"  Overené {d['origin']}→{d['city']}: cache {before} € → {status}")
+    return used
+
+
+# Krajiny, ktoré sa prehľadávajú naživo v Kiwi (diaľkové lety, kde je cache nepresná)
+EXPLORE_COUNTRIES = {
+    "middle_east": "AE OM JO EG IL",
+    "central_asia": "KZ UZ KG",
+    "asia": "TH VN ID MY LK MV IN JP PH KH SG KR CN",
+    "north_america": "US CA MX",
+    "latam": "BR AR CU DO CO PE CR PA CL",
+}
+
+
+def kiwi_range_search(cfg, today, fly_to, rule, one_for_city, price_to=None):
+    last = today + dt.timedelta(days=30 * cfg["months_ahead"])
+    args = {
+        "flyFrom": ",".join(cfg["origins"]), "flyTo": fly_to,
+        "departureDate": kiwi_date((today + dt.timedelta(days=1)).isoformat()),
+        "departureDateTo": kiwi_date(last.isoformat()),
+        "nights_in_dst_from": rule["min_days"], "nights_in_dst_to": rule["max_days"],
+        "max_sector_stopovers": cfg["max_transfers"],
+        "one_for_city": one_for_city,
+    }
+    if price_to:
+        args["price_to"] = price_to
+    return kiwi_search(args)
+
+
+def live_offers(its, places, cfg, destination=None):
+    out = []
+    for it in its:
+        start = ((it.get("outbound") or {}).get("route") or [""])[0]
+        o = kiwi_offer(it, AIRPORT_CITY.get(start, start), places, cfg, destination)
+        if o and fits_rules(o, cfg):
+            out.append(o)
+    return out
+
+
+def watch_live(cfg, places, today, budget):
+    """Sledované destinácie hľadá priamo v Kiwi (všetky letiská naraz, celé obdobie)."""
+    offers, used = [], 0
+    for w in cfg.get("watchlist", []):
+        if used >= budget:
+            break
+        code = w["code"]
+        is_country = len(code) == 2
+        country = code if is_country else (places.get(code) or ("", ""))[1]
+        rule = region_rule(COUNTRY_TO_REGION.get(country, "other"), cfg)
+        used += 1
+        try:
+            its = kiwi_range_search(cfg, today, w.get("name") if is_country else code, rule, is_country)
+        except KiwiError as e:
+            print(f"  Kiwi sledovanie zlyhalo ({code}): {e}", file=sys.stderr)
+            continue
+        found = live_offers(its, places, cfg, None if is_country else code)
+        offers.extend(found)
+        best = min(found, key=lambda o: o["price"], default=None)
+        print(f"  Sledované {w.get('name', code)}: " +
+              (f"naživo od {best['price']} € z {best['origin']}" if best else "nič"))
+    return offers, used
+
+
+def explore_live(cfg, places, country_names, today, state, budget):
+    """Prehľadá naživo krajiny v diaľkových regiónoch. Každý beh pokračuje tam, kde predošlý skončil."""
+    excluded = set(cfg.get("excluded", []))
+    combos = [(region, cc) for region, codes in EXPLORE_COUNTRIES.items()
+              if cfg["regions"].get(region, {}).get("enabled") for cc in codes.split()
+              if cc not in excluded and limit_for(cc, cc, region, cfg)]
+    if not combos:
+        return []
+    cursor = state.get("explore_cursor", 0) % len(combos)
+    batch = [combos[(cursor + i) % len(combos)] for i in range(min(budget, len(combos)))]
+    state["explore_cursor"] = (cursor + len(batch)) % len(combos)
+    offers = []
+    for region, cc in batch:
+        try:
+            its = kiwi_range_search(cfg, today, country_names.get(cc, cc), region_rule(region, cfg), True,
+                                    price_to=limit_for(cc, cc, region, cfg))
+        except KiwiError as e:
+            print(f"  Kiwi hľadanie zlyhalo ({cc}): {e}", file=sys.stderr)
+            continue
+        found = [o for o in live_offers(its, places, cfg) if o["country"] == cc]
+        offers.extend(found)
+        print(f"  Naživo {country_names.get(cc, cc)}: " +
+              (", ".join(f"{o['city']} {o['price']} €" for o in sorted(found, key=lambda o: o['price'])[:4]) or "nič pod limitom"))
+    return offers
 
 
 # ─── Formátovanie ────────────────────────────────────────────────────────────
@@ -327,15 +484,13 @@ def google_flights_link(d):
 
 
 def buy_link(d):
-    """Overená ponuka → Google Flights (tam cena platí), inak konkrétny let na Aviasales."""
-    if d.get("verified_price") is not None:
-        return google_flights_link(d)
-    return d["link"] or google_flights_link(d)
+    """Živá ponuka → rezervácia na Kiwi.com, ponuka z cache → konkrétny let na Aviasales."""
+    return d.get("link") or google_flights_link(d)
 
 
 def freshness_text(d):
-    if d.get("verified_price") is not None:
-        return "✓ cena overená naživo v Google Flights"
+    if d.get("live"):
+        return "✓ živá cena z Kiwi.com"
     age = d.get("age")
     if age is None:
         return "cena z cache, neoverená"
@@ -343,9 +498,6 @@ def freshness_text(d):
 
 
 def second_link(d):
-    """Druhý odkaz popri Kúpiť: pri overenej ponuke Aviasales, inak Google Flights."""
-    if d.get("verified_price") is not None and d.get("link"):
-        return "pozrieť aj na Aviasales", d["link"]
     return "porovnať na Google Flights", google_flights_link(d)
 
 
@@ -355,7 +507,7 @@ def other_links_md(d):
 
 
 def shown_price(d):
-    return d["verified_price"] if d.get("verified_price") is not None else d["price"]
+    return d["price"]
 
 
 def region_label(region, cfg):
@@ -393,7 +545,7 @@ def build_card(deals, cfg, dashboard_url):
                 {"type": "TextBlock", "text": details_text(d, cfg), "isSubtle": True,
                  "spacing": "None", "wrap": True},
                 {"type": "TextBlock", "text": freshness_text(d), "size": "Small", "spacing": "None", "wrap": True,
-                 "color": "Good" if d.get("verified_price") is not None else "Default"},
+                 "color": "Good" if d.get("live") else "Default"},
                 {
                     "type": "TextBlock",
                     "text": other_links_md(d),
@@ -432,7 +584,7 @@ def build_email(deals, cfg, dashboard_url):
 
     rows = []
     for d in deals:
-        color = "#0f8a4f" if d.get("verified_price") is not None else "#888"
+        color = "#0f8a4f" if d.get("live") else "#888"
         price = (f"{shown_price(d)} €<br><span style='font-size:12px;font-weight:400;color:{color}'>"
                  f"{escape(freshness_text(d))}</span>")
         rows.append(f"""
@@ -539,10 +691,8 @@ def public_offer(o, cfg):
     out = {k: o[k] for k in keys}
     out["buy"] = buy_link(o)
     out["google"] = google_flights_link(o)
-    out["aviasales"] = o["link"]
     out["age"] = o.get("age")
-    if "verified_price" in o:
-        out["verified_price"] = o["verified_price"]
+    out["live"] = bool(o.get("live"))
     return out
 
 
@@ -577,7 +727,7 @@ def write_site(offers, deals, history, places, country_names, cfg, now, verify_i
 
     cheapest_dest = cheapest_by(offers, lambda o: o["destination"])
     by_region = {}
-    for o in sorted(cheapest_dest.values(), key=lambda o: o["price"]):
+    for o in sorted((o for o in cheapest_dest.values() if verification_ok(o)), key=lambda o: o["price"]):
         lst = by_region.setdefault(o["region"], [])
         if len(lst) < 10:
             lst.append(public_offer(o, cfg))
@@ -651,29 +801,43 @@ def main():
         sys.exit("Všetky dopyty na Travelpayouts zlyhali.")
 
     state = read_json(STATE_FILE, {"notified": {}})
-    apply_verified(offers, state, now)
-    candidates = [o for o in offers if is_deal(o) and verification_ok(o, cfg)]
-    deals = sorted(cheapest_by(candidates, lambda o: f"{o['origin']}-{o['destination']}").values(),
-                   key=lambda d: d["price"] / d["limit"])
+    apply_verified(offers, state, cfg, now)
 
-    fresh = filter_new(deals, state, cfg, now)[:cfg["max_alerts_per_run"] * 2]
-    serpapi_key = os.environ.get("SERPAPI_KEY")
-    if serpapi_key and fresh and not args.dry_run:
-        fresh = verify_deals(fresh, state, cfg, serpapi_key, now)
-        deals = [d for d in deals if verification_ok(d, cfg)]
-    fresh = fresh[:cfg["max_alerts_per_run"]]
+    # Sledované destinácie priamo naživo v Kiwi
+    watch_offers, _ = watch_live(cfg, places, today, cfg["live"]["max_watch_searches"])
+    offers.extend(watch_offers)
+    offers.extend(explore_live(cfg, places, country_names, today, state, cfg["live"]["explore_per_run"]))
 
-    print(f"\nPonúk pod limitom: {len(deals)}, nových na odoslanie: {len(fresh)}")
+    def pick_deals():
+        best = {}
+        for o in offers:
+            if not (is_deal(o) and verification_ok(o)):
+                continue
+            k = f"{o['origin']}-{o['destination']}"
+            rank = (not o.get("live"), o["price"])   # živá cena má prednosť pred cache
+            if k not in best or rank < (not best[k].get("live"), best[k]["price"]):
+                best[k] = o
+        best = best.values()
+        return sorted(best, key=lambda d: d["price"] / d["limit"])
+
+    # Ponuky z cache overiť naživo: najprv tie, o ktorých ešte neprišlo upozornenie
+    deals = pick_deals()
+    new_first = filter_new(deals, state, cfg, now)
+    order = new_first + [d for d in deals if d not in new_first]
+    verify_live(order, state, cfg, places, now, cfg["live"]["max_verify_per_run"])
+    deals = pick_deals()
+
+    # Upozornenie len na ponuky so živou cenou; neoverené prídu na rad v ďalšom behu
+    fresh = filter_new([d for d in deals if d.get("live")], state, cfg, now)[:cfg["max_alerts_per_run"]]
+
+    live_count = sum(1 for d in deals if d.get("live"))
+    print(f"\nPonúk pod limitom: {len(deals)} (naživo overených {live_count}), nových na odoslanie: {len(fresh)}")
     for d in fresh:
         print(f"  {d['origin']} → {d['city']} ({d['country']}): {shown_price(d)} € · {freshness_text(d)} · "
               f"{d['departure']} – {d['return']} · {transfers_text(d['transfers'])}")
 
     history = update_history(read_json(HISTORY_FILE, {}), cheapest_by(offers, lambda o: o["destination"]), cfg, today)
-    write_site(offers, deals, history, places, country_names, cfg, now, {
-        "enabled": bool(serpapi_key),
-        "used": state.get("verify_usage", {}).get("count", 0),
-        "budget": cfg["verify"]["monthly_budget"],
-    })
+    write_site(offers, deals, history, places, country_names, cfg, now, {"live": live_count, "total": len(deals)})
 
     if args.dry_run:
         if fresh:

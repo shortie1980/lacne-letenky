@@ -67,7 +67,10 @@
       "max_price": 300
     }
   ],
-  "excluded": [],
+  "excluded": [
+    "KZ",
+    "TM"
+  ],
   "notify": {
     "ntfy_topic": ""
   },

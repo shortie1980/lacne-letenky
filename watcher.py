@@ -37,7 +37,7 @@ KIWI_MCP_URL = "https://mcp.kiwi.com/"
 NTFY_URL = "https://ntfy.sh"
 
 HISTORY_DAYS = 120
-OTHER_REGION = {"label": "Ostatné", "max_price": 0, "min_days": 3, "max_days": 30, "enabled": False}
+OTHER_REGION = {"label": "Ostatné", "max_price": 0, "min_days": 7, "max_days": 10, "enabled": False}
 
 REGION_COUNTRIES = {
     "europe": """AL AD AT BY BE BA BG HR CY CZ DK EE FI FR DE GR HU IS IE IT XK LV LI LT

@@ -16,43 +16,43 @@
       "label": "Európa",
       "enabled": true,
       "max_price": 35,
-      "min_days": 2,
-      "max_days": 10
+      "min_days": 3,
+      "max_days": 7
     },
     "middle_east": {
       "label": "Kaukaz a Blízky východ",
       "enabled": true,
       "max_price": 100,
-      "min_days": 3,
-      "max_days": 14
+      "min_days": 7,
+      "max_days": 10
     },
     "central_asia": {
       "label": "Stredná Ázia",
       "enabled": false,
       "max_price": 250,
-      "min_days": 5,
-      "max_days": 21
+      "min_days": 7,
+      "max_days": 10
     },
     "asia": {
       "label": "Ázia",
       "enabled": true,
       "max_price": 450,
       "min_days": 7,
-      "max_days": 28
+      "max_days": 10
     },
     "north_america": {
       "label": "Severná Amerika",
       "enabled": true,
       "max_price": 350,
-      "min_days": 5,
-      "max_days": 28
+      "min_days": 7,
+      "max_days": 10
     },
     "latam": {
       "label": "Južná Amerika a Karibik",
       "enabled": true,
       "max_price": 650,
       "min_days": 7,
-      "max_days": 28
+      "max_days": 10
     }
   },
   "watchlist": [

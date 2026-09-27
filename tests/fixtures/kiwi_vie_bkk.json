@@ -1,0 +1,359 @@
+{
+ "jsonrpc": "2.0",
+ "id": 1,
+ "result": {
+  "structuredContent": {
+   "query": "VIE → BKK on 10/11/2026, returning 20/11/2026, 1 adult",
+   "currency": "EUR",
+   "passengers": {
+    "adults": 1,
+    "children": 0,
+    "infants": 0
+   },
+   "resultsCount": 15,
+   "itineraries": [
+    {
+     "id": "19ef0756511f00006c922052_0|19ef0756511f00006c922052_1|075619ef5129000056308cc6_0|075619ef5129000056308cc6_1",
+     "price": 502.0,
+     "priceFormatted": "502 EUR",
+     "totalDurationSeconds": 154200,
+     "bookingUrl": "https://kiwi.com/u/yknthu",
+     "imageId": "bangkok_th",
+     "baggage": {
+      "personalItem": 1,
+      "cabinBag": 1,
+      "checkedBag": 0
+     },
+     "outbound": {
+      "from": "VIE",
+      "to": "BKK",
+      "departureTime": "2026-11-10T12:10:00",
+      "arrivalTime": "2026-11-11T10:25:00",
+      "durationSeconds": 58500,
+      "stops": 1,
+      "route": [
+       "VIE",
+       "SHJ",
+       "BKK"
+      ],
+      "cabinClass": "Economy",
+      "segments": [
+       {
+        "from": "VIE",
+        "to": "SHJ",
+        "fromCity": "Vienna",
+        "toCity": "Dubai",
+        "fromName": "Vienna International Airport",
+        "toName": "Sharjah International",
+        "fromCountry": "Austria",
+        "toCountry": "United Arab Emirates",
+        "departureTime": "2026-11-10T12:10:00",
+        "arrivalTime": "2026-11-10T20:50:00",
+        "durationSeconds": 20400,
+        "carrier": "G9",
+        "carrierName": "Air Arabia",
+        "flightNumber": "G9971",
+        "cabinClass": "Economy"
+       },
+       {
+        "from": "SHJ",
+        "to": "BKK",
+        "fromCity": "Dubai",
+        "toCity": "Bangkok",
+        "fromName": "Sharjah International",
+        "toName": "Suvarnabhumi",
+        "fromCountry": "United Arab Emirates",
+        "toCountry": "Thailand",
+        "departureTime": "2026-11-11T01:10:00",
+        "arrivalTime": "2026-11-11T10:25:00",
+        "durationSeconds": 22500,
+        "carrier": "G9",
+        "carrierName": "Air Arabia",
+        "flightNumber": "G9823",
+        "cabinClass": "Economy"
+       }
+      ]
+     },
+     "inbound": {
+      "from": "BKK",
+      "to": "VIE",
+      "departureTime": "2026-11-20T22:20:00",
+      "arrivalTime": "2026-11-21T18:55:00",
+      "durationSeconds": 95700,
+      "stops": 1,
+      "route": [
+       "BKK",
+       "DEL",
+       "VIE"
+      ],
+      "cabinClass": "Economy",
+      "segments": [
+       {
+        "from": "BKK",
+        "to": "DEL",
+        "fromCity": "Bangkok",
+        "toCity": "New Delhi",
+        "fromName": "Suvarnabhumi",
+        "toName": "Indira Gandhi International",
+        "fromCountry": "Thailand",
+        "toCountry": "India",
+        "departureTime": "2026-11-20T22:20:00",
+        "arrivalTime": "2026-11-21T01:35:00",
+        "durationSeconds": 17100,
+        "carrier": "AI",
+        "carrierName": "Air India Limited",
+        "flightNumber": "AI2303",
+        "cabinClass": "Economy"
+       },
+       {
+        "from": "DEL",
+        "to": "VIE",
+        "fromCity": "New Delhi",
+        "toCity": "Vienna",
+        "fromName": "Indira Gandhi International",
+        "toName": "Vienna International Airport",
+        "fromCountry": "India",
+        "toCountry": "Austria",
+        "departureTime": "2026-11-21T14:00:00",
+        "arrivalTime": "2026-11-21T18:55:00",
+        "durationSeconds": 33900,
+        "carrier": "AI",
+        "carrierName": "Air India Limited",
+        "flightNumber": "AI153",
+        "cabinClass": "Economy"
+       }
+      ]
+     }
+    },
+    {
+     "id": "19ef0756511f00006ba65c1a_0|19ef0756511f00006ba65c1a_1|075619ef5129000056308cc6_0|075619ef5129000056308cc6_1",
+     "price": 539.0,
+     "priceFormatted": "539 EUR",
+     "totalDurationSeconds": 143100,
+     "bookingUrl": "https://kiwi.com/u/wxbs2x",
+     "imageId": "bangkok_th",
+     "baggage": {
+      "personalItem": 1,
+      "cabinBag": 1,
+      "checkedBag": 0
+     },
+     "outbound": {
+      "from": "VIE",
+      "to": "BKK",
+      "departureTime": "2026-11-10T12:10:00",
+      "arrivalTime": "2026-11-11T07:20:00",
+      "durationSeconds": 47400,
+      "stops": 1,
+      "route": [
+       "VIE",
+       "SHJ",
+       "BKK"
+      ],
+      "cabinClass": "Economy",
+      "segments": [
+       {
+        "from": "VIE",
+        "to": "SHJ",
+        "fromCity": "Vienna",
+        "toCity": "Dubai",
+        "fromName": "Vienna International Airport",
+        "toName": "Sharjah International",
+        "fromCountry": "Austria",
+        "toCountry": "United Arab Emirates",
+        "departureTime": "2026-11-10T12:10:00",
+        "arrivalTime": "2026-11-10T20:50:00",
+        "durationSeconds": 20400,
+        "carrier": "G9",
+        "carrierName": "Air Arabia",
+        "flightNumber": "G9971",
+        "cabinClass": "Economy"
+       },
+       {
+        "from": "SHJ",
+        "to": "BKK",
+        "fromCity": "Dubai",
+        "toCity": "Bangkok",
+        "fromName": "Sharjah International",
+        "toName": "Suvarnabhumi",
+        "fromCountry": "United Arab Emirates",
+        "toCountry": "Thailand",
+        "departureTime": "2026-11-10T22:05:00",
+        "arrivalTime": "2026-11-11T07:20:00",
+        "durationSeconds": 22500,
+        "carrier": "G9",
+        "carrierName": "Air Arabia",
+        "flightNumber": "G9821",
+        "cabinClass": "Economy"
+       }
+      ]
+     },
+     "inbound": {
+      "from": "BKK",
+      "to": "VIE",
+      "departureTime": "2026-11-20T22:20:00",
+      "arrivalTime": "2026-11-21T18:55:00",
+      "durationSeconds": 95700,
+      "stops": 1,
+      "route": [
+       "BKK",
+       "DEL",
+       "VIE"
+      ],
+      "cabinClass": "Economy",
+      "segments": [
+       {
+        "from": "BKK",
+        "to": "DEL",
+        "fromCity": "Bangkok",
+        "toCity": "New Delhi",
+        "fromName": "Suvarnabhumi",
+        "toName": "Indira Gandhi International",
+        "fromCountry": "Thailand",
+        "toCountry": "India",
+        "departureTime": "2026-11-20T22:20:00",
+        "arrivalTime": "2026-11-21T01:35:00",
+        "durationSeconds": 17100,
+        "carrier": "AI",
+        "carrierName": "Air India Limited",
+        "flightNumber": "AI2303",
+        "cabinClass": "Economy"
+       },
+       {
+        "from": "DEL",
+        "to": "VIE",
+        "fromCity": "New Delhi",
+        "toCity": "Vienna",
+        "fromName": "Indira Gandhi International",
+        "toName": "Vienna International Airport",
+        "fromCountry": "India",
+        "toCountry": "Austria",
+        "departureTime": "2026-11-21T14:00:00",
+        "arrivalTime": "2026-11-21T18:55:00",
+        "durationSeconds": 33900,
+        "carrier": "AI",
+        "carrierName": "Air India Limited",
+        "flightNumber": "AI153",
+        "cabinClass": "Economy"
+       }
+      ]
+     }
+    },
+    {
+     "id": "19ef0756511f00006c922052_0|19ef0756511f00006c922052_1|075619ef5129000067ec6fe5_0|075619ef5129000067ec6fe5_1",
+     "price": 548.0,
+     "priceFormatted": "548 EUR",
+     "totalDurationSeconds": 124200,
+     "bookingUrl": "https://kiwi.com/u/fbmfqut",
+     "imageId": "bangkok_th",
+     "baggage": {
+      "personalItem": 1,
+      "cabinBag": 1,
+      "checkedBag": 0
+     },
+     "outbound": {
+      "from": "VIE",
+      "to": "BKK",
+      "departureTime": "2026-11-10T12:10:00",
+      "arrivalTime": "2026-11-11T10:25:00",
+      "durationSeconds": 58500,
+      "stops": 1,
+      "route": [
+       "VIE",
+       "SHJ",
+       "BKK"
+      ],
+      "cabinClass": "Economy",
+      "segments": [
+       {
+        "from": "VIE",
+        "to": "SHJ",
+        "fromCity": "Vienna",
+        "toCity": "Dubai",
+        "fromName": "Vienna International Airport",
+        "toName": "Sharjah International",
+        "fromCountry": "Austria",
+        "toCountry": "United Arab Emirates",
+        "departureTime": "2026-11-10T12:10:00",
+        "arrivalTime": "2026-11-10T20:50:00",
+        "durationSeconds": 20400,
+        "carrier": "G9",
+        "carrierName": "Air Arabia",
+        "flightNumber": "G9971",
+        "cabinClass": "Economy"
+       },
+       {
+        "from": "SHJ",
+        "to": "BKK",
+        "fromCity": "Dubai",
+        "toCity": "Bangkok",
+        "fromName": "Sharjah International",
+        "toName": "Suvarnabhumi",
+        "fromCountry": "United Arab Emirates",
+        "toCountry": "Thailand",
+        "departureTime": "2026-11-11T01:10:00",
+        "arrivalTime": "2026-11-11T10:25:00",
+        "durationSeconds": 22500,
+        "carrier": "G9",
+        "carrierName": "Air Arabia",
+        "flightNumber": "G9823",
+        "cabinClass": "Economy"
+       }
+      ]
+     },
+     "inbound": {
+      "from": "BKK",
+      "to": "VIE",
+      "departureTime": "2026-11-20T20:15:00",
+      "arrivalTime": "2026-11-21T08:30:00",
+      "durationSeconds": 65700,
+      "stops": 1,
+      "route": [
+       "BKK",
+       "SIN",
+       "VIE"
+      ],
+      "cabinClass": "Economy",
+      "segments": [
+       {
+        "from": "BKK",
+        "to": "SIN",
+        "fromCity": "Bangkok",
+        "toCity": "Singapore",
+        "fromName": "Suvarnabhumi",
+        "toName": "Singapore Changi",
+        "fromCountry": "Thailand",
+        "toCountry": "Singapore",
+        "departureTime": "2026-11-20T20:15:00",
+        "arrivalTime": "2026-11-20T23:50:00",
+        "durationSeconds": 9300,
+        "carrier": "TR",
+        "carrierName": "Scoot",
+        "flightNumber": "TR627",
+        "cabinClass": "Economy"
+       },
+       {
+        "from": "SIN",
+        "to": "VIE",
+        "fromCity": "Singapore",
+        "toCity": "Vienna",
+        "fromName": "Singapore Changi",
+        "toName": "Vienna International Airport",
+        "fromCountry": "Singapore",
+        "toCountry": "Austria",
+        "departureTime": "2026-11-21T02:45:00",
+        "arrivalTime": "2026-11-21T08:30:00",
+        "durationSeconds": 45900,
+        "carrier": "TR",
+        "carrierName": "Scoot",
+        "flightNumber": "TR60",
+        "cabinClass": "Economy"
+       }
+      ]
+     }
+    }
+   ],
+   "searchTimeMs": 16284,
+   "error": null
+  }
+ }
+}

@@ -11,48 +11,70 @@
   "max_alerts_per_region": 4,
   "renotify_days": 7,
   "renotify_drop_pct": 10,
+  "max_price_age_days": 4,
+  "passengers": {
+    "adults": 1,
+    "hold_bags": 0
+  },
+  "filters": {
+    "earliest_departure_hour": 0,
+    "latest_departure_hour": 23,
+    "exclude_airlines": []
+  },
   "regions": {
     "europe": {
       "label": "Európa",
       "enabled": true,
       "max_price": 50,
       "min_days": 3,
-      "max_days": 7
+      "max_days": 7,
+      "out_days": [],
+      "back_days": []
     },
     "middle_east": {
       "label": "Kaukaz a Blízky východ",
       "enabled": true,
       "max_price": 100,
       "min_days": 7,
-      "max_days": 10
+      "max_days": 10,
+      "out_days": [],
+      "back_days": []
     },
     "central_asia": {
       "label": "Stredná Ázia",
       "enabled": false,
       "max_price": 250,
       "min_days": 7,
-      "max_days": 10
+      "max_days": 10,
+      "out_days": [],
+      "back_days": []
     },
     "asia": {
       "label": "Ázia",
       "enabled": true,
       "max_price": 450,
       "min_days": 7,
-      "max_days": 10
+      "max_days": 10,
+      "out_days": [],
+      "back_days": []
     },
     "north_america": {
       "label": "Severná Amerika",
       "enabled": true,
       "max_price": 400,
       "min_days": 7,
-      "max_days": 10
+      "max_days": 10,
+      "out_days": [],
+      "back_days": []
     },
     "latam": {
       "label": "Južná Amerika a Karibik",
       "enabled": true,
       "max_price": 650,
       "min_days": 7,
-      "max_days": 10
+      "max_days": 10,
+      "out_days": [],
+      "back_days": []
     }
   },
   "watchlist": [
@@ -72,10 +94,19 @@
     "TM",
     "PK"
   ],
-  "notify": {
-    "ntfy_topic": ""
+  "smart": {
+    "enabled": true,
+    "drop_pct": 25,
+    "min_history_days": 4,
+    "max_over_limit_pct": 50
   },
-  "max_price_age_days": 4,
+  "tips": {
+    "enabled": true
+  },
+  "notify": {
+    "ntfy_topic": "",
+    "health_alerts": true
+  },
   "live": {
     "max_verify_per_run": 10,
     "max_watch_searches": 10,

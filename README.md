@@ -1,86 +1,70 @@
 # ✈️ Lacné letenky
 
-Aplikácia, ktorá každých 30 minút prehľadá lacné spiatočné letenky z tvojich letísk (predvolene VIE, BTS, BUD, PRG)
-do celého sveta. Keď nájde cenu pod tvojím limitom, pošle ti upozornenie:
+Osobná aplikácia, ktorá každých 30 minút hľadá lacné spiatočné letenky z tvojich letísk
+(predvolene VIE, BTS, BUD, PRG) a hneď ťa upozorní: **push na mobil** (ntfy), **Teams** a **e-mail**.
+Upozornenia chodia len na **živé ceny overené na Kiwi.com**, s odkazom priamo na rezerváciu.
 
-- **push notifikáciu na mobil** cez aplikáciu ntfy (najrýchlejšie),
-- **správu do Teams** a **e-mail** cez Power Automate.
+**Aplikácia:** https://shortie1980.github.io/lacne-letenky/ (dá sa pridať na plochu mobilu)
 
-Upozornenia chodia **len na živé ceny overené na Kiwi.com**. Tlačidlo **Kúpiť** otvorí rovno rezerváciu
-konkrétnej letenky na Kiwi.com za zobrazenú cenu.
+## Čo vie
 
-**Webová aplikácia** (`https://<tvoje-meno>.github.io/lacne-letenky/`) funguje aj na mobile:
-- **Ponuky:** všetky aktuálne ponuky pod limitom, filtre podľa regiónu a letiska, graf vývoja ceny.
-- **Ceny teraz:** najlacnejšie destinácie v každom regióne aj nad limitom, aby si videl, koľko letenky stoja.
-- **Nastavenia:** letiská, limity podľa regiónu s posuvníkmi, sledované destinácie s vlastným limitom,
-  vylúčené destinácie, počet prestupov a notifikácie. Po uložení sa hneď spustí nové vyhľadávanie.
+- **Živé ceny.** Kandidátov z cache (Travelpayouts) overí naživo cez Kiwi.com (±2 dni okolo termínu),
+  sledované destinácie a hlavné krajiny v Ázii a Amerike prehľadáva naživo na celé obdobie.
+- **Chytré upozornenia.** Okrem pevného limitu upozorní aj vtedy, keď je cena výrazne pod bežnou úrovňou
+  (napr. −25 % oproti mediánu posledných dní), aj keď je mierne nad limitom.
+- **Cestujúci a batožina.** Počet dospelých, kufor v cene. Ceny a limity sú vždy za osobu.
+- **Termíny.** Dĺžka pobytu podľa regiónu, dni odletu a návratu (napr. predĺžené víkendy), časy odletov,
+  vylúčené aerolínie.
+- **Akciové tipy a chybné ceny** z fly4free.com s odletom z tvojich letísk.
+- **Kontrola zdrojov.** Ak Kiwi, Travelpayouts alebo fly4free 3× po sebe zlyhá, príde upozornenie.
+- **Webová aplikácia.** Ponuky s fotkami, detail letu (prestupy, časy, batožina, graf ceny),
+  prehľad cien podľa regiónov a všetky nastavenia. Po uložení sa hneď spustí nové vyhľadávanie.
 
 ## Ako to funguje
 
 ```
 GitHub Actions (každých 30 min, zadarmo)
+  ├─ testy (pytest) → zostavenie webu (TypeScript, Vite)
   └─ watcher.py
-       ├─ Travelpayouts (cache vyhľadávaní) ── kandidáti po celom svete
-       ├─ Kiwi.com MCP (živé ceny) ─┬─ overí kandidátov (±2 dni okolo termínu)
-       │                            ├─ prehľadá sledované destinácie na celé obdobie
-       │                            └─ prehľadá hlavné krajiny v Ázii a Amerike (postupne)
-       ├─► ntfy push · Teams · e-mail (len živé ceny)
-       └─► dáta pre web ──► GitHub Pages (aplikácia)
+       ├─ Travelpayouts (cache) ──────── kandidáti po celom svete
+       ├─ Kiwi.com MCP (živé ceny) ───── overenie · sledované destinácie · krajiny v Ázii a Amerike
+       ├─ fly4free.com (RSS) ─────────── akciové tipy a chybné ceny
+       ├─► ntfy push · Teams · e-mail
+       └─► dáta pre web ──► GitHub Pages
 Aplikácia ── uloží config.json cez GitHub API ──► spustí nové vyhľadávanie
 ```
 
-## Nastavenie (asi 20 minút, jednorazovo)
+| Priečinok | Obsah |
+|---|---|
+| `letenky/` | Python: pravidlá, zdroje (`sources/`), upozornenia, dáta pre web, stav zdrojov |
+| `web/` | Webová aplikácia: TypeScript + Preact + Vite |
+| `tests/` | Testy (pytest) s ukážkovými odpoveďami Kiwi a fly4free |
+| `config.json` | Nastavenia (upravuje ich aplikácia) |
 
-### 1. Token pre Travelpayouts
-Zaregistruj sa na https://www.travelpayouts.com, otvor **Profile → API token** a skopíruj token.
+## Nastavenie
 
-### 2. Teams + e-mail cez Power Automate
-1. V Teams si vytvor kanál, napr. **Letenky**.
-2. Pri kanáli klikni na **⋯ → Workflows** a vyber šablónu **„Post to a channel when a webhook request is received“**.
-   Dokonči sprievodcu.
-3. Otvor https://make.powerautomate.com → **My flows** a vyber flow, ktorý sa práve vytvoril → **Edit**.
-4. Pod posledný krok pridaj akciu **Office 365 Outlook → Send an email (V2)** a vyplň:
-   - **To:** klikni na *fx* a zadaj `triggerBody()?['email_to']`
-   - **Subject:** `triggerBody()?['email_subject']`
-   - **Body:** prepni na zobrazenie kódu `</>` a vlož `triggerBody()?['email_html']`
-5. Ulož flow. V prvom kroku (trigger) skopíruj **HTTP URL**.
+Secrets v repozitári (**Settings → Secrets and variables → Actions**): `TRAVELPAYOUTS_TOKEN`,
+`TEAMS_WEBHOOK_URL` (Power Automate flow „Post to a channel when a webhook request is received“
+s pridaným krokom *Send an email (V2)*: Subject `triggerBody()?['email_subject']`, Body `triggerBody()?['email_html']`)
+a `EMAIL_TO`. GitHub Pages: **Settings → Pages → Source: GitHub Actions**.
 
-### 3. GitHub repozitár
-1. Na https://github.com/new vytvor repozitár `lacne-letenky` ako **Public**.
-   GitHub Pages je pre súkromné repozitáre zadarmo len v platenom pláne. V repozitári nie je nič citlivé:
-   tokeny, webhook aj e-mail sú v Secrets.
-2. Nahraj doň obsah tohto priečinka.
-3. **Settings → Secrets and variables → Actions → New repository secret:**
-   - `TRAVELPAYOUTS_TOKEN`: token z kroku 1
-   - `TEAMS_WEBHOOK_URL`: URL z kroku 2
-   - `EMAIL_TO`: tvoj e-mail
-4. **Settings → Pages → Source: GitHub Actions**
-5. **Actions → Lacné letenky → Run workflow**. Po asi 2 minútach je aplikácia na `https://<meno>.github.io/lacne-letenky/`.
+V aplikácii: **Nastavenia → Pripojenie** (fine-grained token s právami Contents a Actions: Read and write,
+len pre tento repozitár) a **Nastavenia → Upozornenia → Zapnúť push notifikácie**.
 
-### 4. Pripojenie aplikácie (aby mohla ukladať nastavenia)
-V aplikácii otvor **Nastavenia → Pripojenie** a postupuj podľa návodu. Vytvoríš fine-grained token
-iba pre tento repozitár s oprávneniami **Contents** a **Actions: Read and write**.
-Token sa uloží len v prehliadači na danom zariadení.
-
-### 5. Push notifikácie na mobil (odporúčané)
-V aplikácii otvor **Nastavenia → Upozornenia → Vygenerovať** a ulož. Potom si nainštaluj aplikáciu **ntfy**
-a prihlás sa na odber zobrazenej témy.
-
-## Lokálne skúšanie
+## Vývoj
 
 ```bash
-pip install -r requirements.txt
-export TRAVELPAYOUTS_TOKEN=...
-python watcher.py --dry-run          # nájde ponuky, vygeneruje web do site/, nič neposiela
-python -m http.server 8765           # web potom beží na http://localhost:8765/site/
-python watcher.py --test-notify      # pošle skúšobné upozornenie (potrebuje TEAMS_WEBHOOK_URL alebo ntfy tému)
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest -q                       # testy
+TRAVELPAYOUTS_TOKEN=... python watcher.py --dry-run   # beh bez odosielania, dáta do site/
+python watcher.py --test-notify           # skúšobné upozornenie
+
+cd web && npm install && npm run build    # web do web/dist (kontrola typov + zostavenie)
+cp -R web/dist/. site/ && python -m http.server 8765  # náhľad na http://localhost:8765/site/
 ```
 
 ## Dobré vedieť
-- Ceny z **cache** (Aviasales) pri diaľkových letoch často nesedia, napr. Krabi 214 € v cache a 615 € naživo.
-  Preto sa každá ponuka pred upozornením overí naživo na Kiwi.com.
-- Kiwi MCP (`mcp.kiwi.com`) je verejná služba bez kľúča. Aplikácia ju používa striedmo: najviac
-  približne 35 vyhľadávaní za beh.
-- Tú istú trasu aplikácia pošle znova až po nastavenom počte dní, alebo skôr, ak výrazne zlacnie.
-- Ak repozitár 60 dní nikto neupraví, GitHub môže plánované behy pozastaviť. Príde ti o tom e-mail
-  a obnovíš ich jedným klikom v záložke Actions.
+- Ceny z cache pri diaľkových letoch často nesedia (napr. Krabi 214 € v cache, 615 € naživo),
+  preto upozornenia chodia len na živé ceny.
+- Kiwi MCP (`mcp.kiwi.com`) je verejná služba bez kľúča; aplikácia ju používa striedmo (~30 vyhľadávaní za beh).
+- Ak repozitár 60 dní nikto neupraví, GitHub môže plánované behy pozastaviť – obnovíš ich v záložke Actions.

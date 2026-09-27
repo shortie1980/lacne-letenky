@@ -320,8 +320,11 @@ def apply_verified(offers, state, cfg, now):
     for k in [k for k, v in cache.items() if now - dt.datetime.fromisoformat(v["at"]) > ttl]:
         del cache[k]
     for o in offers:
-        v = cache.get(verify_key(o))
-        if v:
+        k = verify_key(o)
+        v = cache.get(k)
+        if v and v["live"] is not None and not fits_rules(dict(v["live"], region=o["region"]), cfg):
+            del cache[k]          # overené pred zmenou pravidiel (pobyt, prestupy) → overiť znova
+        elif v:
             merge_live(o, v["live"])
 
 
@@ -811,7 +814,7 @@ def main():
     def pick_deals():
         best = {}
         for o in offers:
-            if not (is_deal(o) and verification_ok(o)):
+            if not (is_deal(o) and verification_ok(o) and fits_rules(o, cfg)):
                 continue
             k = f"{o['origin']}-{o['destination']}"
             rank = (not o.get("live"), o["price"])   # živá cena má prednosť pred cache

@@ -192,3 +192,32 @@ def test_texts_and_email(cfg):
     assert "Etihad" in html and "Kúpiť" in html
     card = notify.build_card([d], [{"title": "Tip", "link": "https://t"}], cfg, {}, "")
     json.dumps(card)
+
+
+def test_smtp_email_is_sent_with_html_and_text(monkeypatch, cfg):
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port, context=None, timeout=None):
+            sent["host"] = host
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def login(self, user, password):
+            sent["login"] = user
+        def send_message(self, msg):
+            sent["msg"] = msg
+
+    monkeypatch.setattr(notify.smtplib, "SMTP_SSL", FakeSMTP)
+    for k, v in {"SMTP_HOST": "smtp.example.com", "SMTP_USER": "me@example.com", "SMTP_PASSWORD": "x",
+                 "EMAIL_TO": "me@example.com"}.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("TEAMS_WEBHOOK_URL", raising=False)
+    cfg["notify"]["ntfy_topic"] = ""
+    ok, err = notify.notify([rules.evaluate(offer(), cfg, {})], [], cfg, {"EY": "Etihad"}, "")
+    assert ok and err is None and sent["host"] == "smtp.example.com"
+    msg = sent["msg"]
+    assert msg["To"] == "me@example.com" and "Bangkok" in msg["Subject"]
+    assert msg.get_body(("html",)).get_content().count("Kúpiť") == 1
+    assert "Bangkok" in msg.get_body(("plain",)).get_content()

@@ -104,7 +104,7 @@
     "enabled": true
   },
   "notify": {
-    "ntfy_topic": "letenky-x7wuxnjxi2",
+    "ntfy_topic": "",
     "health_alerts": true
   },
   "live": {

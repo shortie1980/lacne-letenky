@@ -1,6 +1,10 @@
 """Odoslanie upozornení: Teams + e-mail (jeden Power Automate flow) a push na mobil cez ntfy."""
 import os
+import smtplib
+import ssl
 import sys
+from email.message import EmailMessage
+from email.utils import formataddr, make_msgid
 from html import escape
 
 import requests
@@ -149,8 +153,45 @@ def send_ntfy(deals, tips, topic, cfg, airlines, dashboard_url):
 
 # ─── Spoločné ────────────────────────────────────────────────────────────────
 
+# ─── E-mail cez SMTP (vlastná schránka, napr. Forpsi) ────────────────────────
+
+def smtp_settings():
+    s = {"host": os.environ.get("SMTP_HOST", ""), "port": int(os.environ.get("SMTP_PORT") or 465),
+         "user": os.environ.get("SMTP_USER", ""), "password": os.environ.get("SMTP_PASSWORD", ""),
+         "to": os.environ.get("EMAIL_TO", "")}
+    return s if s["host"] and s["user"] and s["password"] and s["to"] else None
+
+
+def plain_text(html):
+    import re
+    text = re.sub(r"<(br|/tr|/div|/li|/p)[^>]*>", "\n", html)
+    text = re.sub(r"<[^>]+>", "", text)
+    return re.sub(r"\n\s*\n+", "\n\n", text).strip()
+
+
+def send_smtp(subject, html, smtp):
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = formataddr(("Lacné letenky", smtp["user"]))
+    msg["To"] = smtp["to"]
+    msg["Message-ID"] = make_msgid(domain=smtp["user"].split("@")[-1])
+    msg.set_content(plain_text(html))
+    msg.add_alternative(html, subtype="html")
+    context = ssl.create_default_context()
+    if smtp["port"] == 465:
+        with smtplib.SMTP_SSL(smtp["host"], smtp["port"], context=context, timeout=30) as server:
+            server.login(smtp["user"], smtp["password"])
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(smtp["host"], smtp["port"], timeout=30) as server:
+            server.starttls(context=context)
+            server.login(smtp["user"], smtp["password"])
+            server.send_message(msg)
+
+
 def channels(cfg):
-    return {"webhook": os.environ.get("TEAMS_WEBHOOK_URL"),
+    return {"smtp": smtp_settings(),
+            "webhook": os.environ.get("TEAMS_WEBHOOK_URL"),
             "email_to": os.environ.get("EMAIL_TO", ""),
             "topic": (cfg.get("notify", {}).get("ntfy_topic") or "").strip()}
 
@@ -158,6 +199,13 @@ def channels(cfg):
 def notify(deals, tips, cfg, airlines, dashboard_url):
     """Pošle ponuky a tipy všetkými nastavenými kanálmi. Vráti (úspech, chyba)."""
     ch, ok, errors = channels(cfg), False, []
+    if ch["smtp"]:
+        try:
+            subject, html = build_email(deals, tips, cfg, airlines, dashboard_url)
+            send_smtp(subject, html, ch["smtp"])
+            ok = True
+        except (smtplib.SMTPException, OSError) as e:
+            errors.append(f"e-mail (SMTP): {e}")
     if ch["webhook"]:
         try:
             subject, html = build_email(deals, tips, cfg, airlines, dashboard_url)
@@ -171,8 +219,8 @@ def notify(deals, tips, cfg, airlines, dashboard_url):
             ok = True
         except requests.RequestException as e:
             errors.append(f"ntfy: {e}")
-    if not ch["webhook"] and not ch["topic"]:
-        errors.append("nie je nastavený žiadny kanál")
+    if not ch["smtp"] and not ch["webhook"] and not ch["topic"]:
+        errors.append("nie je nastavený žiadny kanál (SMTP, Teams ani ntfy)")
     for e in errors:
         print(e, file=sys.stderr)
     return ok, "; ".join(errors) or None
@@ -193,9 +241,11 @@ def notify_health(source_label, event, error, cfg, dashboard_url):
             f'<p style="color:#555">{escape(text)}</p>'
             + (f'<p><a href="{escape(dashboard_url)}">Otvoriť aplikáciu</a></p>' if dashboard_url else "") + "</div>")
     try:
+        if ch["smtp"]:
+            send_smtp(title, html, ch["smtp"])
         if ch["webhook"]:
             send_flow(card, title, html, ch["webhook"], ch["email_to"])
         if ch["topic"]:
             ntfy_post(ch["topic"], title=title, message=text, tags=["warning" if event == "down" else "white_check_mark"])
-    except (requests.RequestException, RuntimeError) as e:
+    except (requests.RequestException, RuntimeError, smtplib.SMTPException, OSError) as e:
         print(f"Upozornenie o stave zlyhalo: {e}", file=sys.stderr)

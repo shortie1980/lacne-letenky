@@ -5,7 +5,7 @@ import { GitHub, GitHubError, detectRepo, readLocalConfig, storage } from "./lib
 import { plural } from "./lib/format";
 import type { Config, DealsData, History, Offer, Places } from "./types";
 
-export type Tab = "deals" | "tips" | "market" | "settings";
+export type Tab = "deals" | "search" | "tips" | "market" | "settings";
 export type Sort = "value" | "price" | "date";
 
 export const data = signal<DealsData | null>(null);

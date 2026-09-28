@@ -57,8 +57,12 @@ def price_text(o, adults):
 
 def why_text(o):
     parts = []
-    if "smart" in o.get("reasons", []) and o.get("drop_pct"):
+    if o.get("exceptional"):
+        parts.append(f"🔥 výnimočná cena: o {o['drop_pct']} % lacnejšie ako bežne ({o['typical']} €)")
+    elif "smart" in o.get("reasons", []) and o.get("drop_pct"):
         parts.append(f"📉 o {o['drop_pct']} % lacnejšie ako bežne ({o['typical']} €)")
+    elif o.get("drop_pct") and o["drop_pct"] >= 10:
+        parts.append(f"o {o['drop_pct']} % pod bežnou cenou ({o['typical']} €)")
     if "limit" in o.get("reasons", []):
         parts.append(f"pod tvojím limitom {o['limit']} €")
     return " · ".join(parts)

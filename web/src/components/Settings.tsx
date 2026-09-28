@@ -209,6 +209,12 @@ export function SettingsView() {
                 <Stepper value={c.smart.drop_pct} min={10} max={60} step={5} onChange={(v) => set((x) => (x.smart.drop_pct = v))} format={(v) => `${v} %`} />
               </Row>
             )}
+            <Row title={`🔥 Výnimočná cena od −${c.smart.exceptional_pct} %`} hint="Takáto ponuka príde e-mailom s červenou hlavičkou a vysokou prioritou">
+              <Stepper value={c.smart.exceptional_pct} min={20} max={70} step={5} onChange={(v) => set((x) => (x.smart.exceptional_pct = v))} format={(v) => `${v} %`} />
+            </Row>
+            <Row title={`…a zároveň ušetríš aspoň ${euro(c.smart.exceptional_min_saving)} na osobu`} hint="Aby sa za výnimočné nepovažovali bežné výpredaje lacných európskych liniek">
+              <Stepper value={c.smart.exceptional_min_saving} min={0} max={500} step={25} onChange={(v) => set((x) => (x.smart.exceptional_min_saving = v))} format={(v) => euro(v)} />
+            </Row>
           </Section>
 
           <Section id="watch" icon="🔔" title="Sledované destinácie" lead="Konkrétne mestá alebo krajiny s vlastným limitom. Hľadám ich naživo na celé obdobie.">

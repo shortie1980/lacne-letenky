@@ -32,7 +32,7 @@ DEFAULTS = {
     "region_defaults": {"out_days": [], "back_days": []},
     "watchlist": [],
     "excluded": [],
-    "smart": {"enabled": True, "drop_pct": 25, "min_history_days": 4, "max_over_limit_pct": 50},
+    "smart": {"enabled": True, "drop_pct": 25, "exceptional_pct": 40, "exceptional_min_saving": 100, "min_history_days": 4, "max_over_limit_pct": 50},
     "tips": {"enabled": True},
     "notify": {"ntfy_topic": "", "health_alerts": True},
     "live": {"max_verify_per_run": 10, "max_watch_searches": 10, "explore_per_run": 14, "cache_hours": 6},

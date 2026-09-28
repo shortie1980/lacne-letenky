@@ -10,7 +10,7 @@ from .text import buy_link, google_flights_link
 HISTORY_DAYS = 120
 PUBLIC_KEYS = ("origin", "destination", "city", "country", "region", "price_pp", "price_total", "limit",
                "departure", "return", "days", "transfers", "airline", "airlines", "age", "live", "baggage",
-               "duration", "out", "back", "typical", "drop_pct", "reasons")
+               "duration", "out", "back", "typical", "typical_source", "drop_pct", "reasons", "exceptional")
 
 
 def write_json(path, data):
@@ -41,6 +41,26 @@ def cheapest_by(offers, key, price="price_pp"):
     return best
 
 
+MIN_MARKET_SAMPLES = 8
+
+
+def update_market(history, market, today):
+    """Bežná cena destinácie: medián najnižších cien pre jednotlivé dni odletu (z cache Travelpayouts)."""
+    import statistics
+    day = today.isoformat()
+    for dest, daily in market.items():
+        prices = list(daily.values()) if isinstance(daily, dict) else daily
+        if len(prices) < MIN_MARKET_SAMPLES:
+            continue
+        pts = history.setdefault(dest, {}).setdefault("market", [])
+        point = [day, round(statistics.median(prices)), len(prices)]
+        if pts and pts[-1][0] == day:
+            pts[-1] = point
+        else:
+            pts.append(point)
+    return history
+
+
 def update_history(history, offers, cfg, today):
     """Denné minimum ceny za osobu: `points` z cache, `live` zo živých cien (základ pre chytré upozornenia)."""
     watched = {w["code"] for w in cfg.get("watchlist", [])}
@@ -65,10 +85,10 @@ def update_history(history, offers, cfg, today):
 
     cutoff = (today - dt.timedelta(days=HISTORY_DAYS)).isoformat()
     for dest in list(history):
-        for series in ("points", "live"):
+        for series in ("points", "live", "market"):
             if series in history[dest]:
                 history[dest][series] = [p for p in history[dest][series] if p[0] >= cutoff]
-        if not history[dest].get("points") and not history[dest].get("live"):
+        if not any(history[dest].get(s) for s in ("points", "live", "market")):
             del history[dest]
     return history
 

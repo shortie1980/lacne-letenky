@@ -83,7 +83,7 @@ def test_fits_rules_days_weekdays_hours_airlines(cfg):
 
 
 def test_smart_deal_needs_history_and_live_price(cfg):
-    history = {"BKK": {"live": [[f"2026-09-{d:02d}", 600] for d in range(20, 26)]}}
+    history = {"BKK": {"live": [[f"2026-09-{d:02d}", 600] for d in range(20, 26)], "market": [["2026-09-25", 900, 50]]}}
     o = rules.evaluate(offer(price_pp=500, limit=450), cfg, history)     # nad limitom, ale −17 %
     assert o["reasons"] == [] and o["typical"] == 600 and o["drop_pct"] == 17
     o = rules.evaluate(offer(price_pp=420, limit=450), cfg, history)     # pod limitom aj −30 %
@@ -94,7 +94,16 @@ def test_smart_deal_needs_history_and_live_price(cfg):
     assert o["reasons"] == ["smart"]
     o = rules.evaluate(offer(price_pp=420, limit=300, live=False), cfg, history)
     assert o["reasons"] == []                                            # chytré upozornenie len so živou cenou
-    assert rules.evaluate(offer(), cfg, {"BKK": {"live": [["2026-09-25", 600]]}})["typical"] is None
+    o = rules.evaluate(offer(), cfg, {"BKK": {"live": [["2026-09-25", 600]]}})
+    assert o["typical"] is None and not o["exceptional"]
+    # málo živej histórie → bežná cena z trhu (medián cache)
+    o = rules.evaluate(offer(price_pp=400), cfg, {"BKK": {"live": [["2026-09-25", 600]], "market": [["2026-09-25", 700, 40]]}})
+    assert o["typical"] == 700 and o["typical_source"] == "market" and o["drop_pct"] == 43
+    assert o["reasons"] == ["limit", "smart"] and o["exceptional"]
+    assert not rules.evaluate(offer(price_pp=400, live=False), cfg, {"BKK": {"market": [["2026-09-25", 700, 40]]}})["exceptional"]
+    # veľká zľava, ale malá úspora (lacný let po Európe) → nie je výnimočná
+    o = rules.evaluate(offer(price_pp=48, limit=100), cfg, {"BKK": {"market": [["2026-09-25", 130, 40]]}})
+    assert o["drop_pct"] == 63 and "smart" in o["reasons"] and not o["exceptional"]
 
 
 # ─── Výber a upozornenia ─────────────────────────────────────────────────────
@@ -221,3 +230,17 @@ def test_smtp_email_is_sent_with_html_and_text(monkeypatch, cfg):
     assert msg["To"] == "me@example.com" and "Bangkok" in msg["Subject"]
     assert msg.get_body(("html",)).get_content().count("Kúpiť") == 1
     assert "Bangkok" in msg.get_body(("plain",)).get_content()
+
+
+def test_market_median_and_exceptional_email(cfg):
+    from letenky.site import update_market
+    daily = {f"2026-11-{d:02d}": p for d, p in zip(range(1, 9), [500, 600, 700, 800, 550, 650, 750, 900])}
+    h = update_market({}, {"BKK": daily, "XYZ": {"2026-11-01": 100}}, TODAY)
+    assert h["BKK"]["market"] == [[TODAY.isoformat(), 675, 8]] and "XYZ" not in h      # málo dní
+    hot = rules.evaluate(offer(price_pp=380), cfg, {"BKK": {"market": [["2026-09-25", 700, 40]]}})
+    normal = rules.evaluate(offer(city="Hanoi", destination="HAN", price_pp=420), cfg, {})
+    subject, html = notify.build_email([normal, hot], [], cfg, {}, "")
+    assert subject.startswith("🔥 VÝNIMOČNE LACNÉ: VIE → Bangkok za 380 € (−46 % oproti bežnej cene)")
+    assert "Výnimočne lacná letenka" in html and html.index("Bangkok") < html.index("Hanoi")
+    subject, _ = notify.build_email([normal], [], cfg, {}, "")
+    assert subject.startswith("✈️ VIE → Hanoi")

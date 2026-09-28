@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { DealSheet } from "./components/Deal";
-import { Bulb, Chart, Gear, Plane, Ticket } from "./components/icons";
+import { Bulb, Chart, Gear, Plane, Search as SearchIcon, Ticket } from "./components/icons";
+import { SearchView } from "./components/Search";
 import { SettingsView } from "./components/Settings";
 import { DealsView, MarketView, TipsView } from "./components/Views";
 import { ago } from "./lib/format";
@@ -9,7 +10,7 @@ import {
 } from "./store";
 
 const TABS: [Tab, string, () => preact.JSX.Element][] = [
-  ["deals", "Ponuky", Ticket], ["tips", "Tipy", Bulb], ["market", "Ceny", Chart], ["settings", "Nastavenia", Gear],
+  ["deals", "Ponuky", Ticket], ["search", "Hľadať", SearchIcon], ["tips", "Tipy", Bulb], ["market", "Ceny", Chart], ["settings", "Nastavenia", Gear],
 ];
 
 function Status() {
@@ -83,6 +84,7 @@ export function App() {
       </header>
       <main class="wrap">
         {tab.value === "deals" && <DealsView />}
+        {tab.value === "search" && <SearchView />}
         {tab.value === "tips" && <TipsView />}
         {tab.value === "market" && <MarketView />}
         {tab.value === "settings" && <SettingsView />}

@@ -16,7 +16,20 @@ from .text import (baggage_text, buy_link, details_text, flag, fmt_date, freshne
 NTFY_URL = "https://ntfy.sh"
 
 
+def exceptional(deals):
+    return sorted((d for d in deals if d.get("exceptional")), key=lambda d: -(d.get("drop_pct") or 0))
+
+
 def headline(deals, tips):
+    hot = exceptional(deals)
+    if hot:
+        best = hot[0]
+        s = (f"🔥 VÝNIMOČNE LACNÉ: {best['origin']} → {best['city']} za {best['price_pp']} € "
+             f"(−{best['drop_pct']} % oproti bežnej cene)")
+        rest = len(deals) - 1
+        if rest:
+            s += f" + {rest} {plural(rest, 'ďalšia ponuka', 'ďalšie ponuky', 'ďalších ponúk')}"
+        return s
     if deals:
         best = min(deals, key=lambda d: d["price_pp"])
         s = f"✈️ {best['origin']} → {best['city']} za {best['price_pp']} €"
@@ -72,26 +85,36 @@ def build_card(deals, tips, cfg, airlines, dashboard_url):
 
 def build_email(deals, tips, cfg, airlines, dashboard_url):
     adults = cfg["passengers"]["adults"]
+    hot = exceptional(deals)
+    deals = hot + [d for d in deals if d not in hot]
     rows = []
     for d in deals:
         img = image_url(d.get("image_id"))
         why = why_text(d)
+        is_hot = d.get("exceptional")
+        border = "2px solid #dc2626" if is_hot else "1px solid #e7e5e4"
+        why_color = "#dc2626" if is_hot else "#15803d"
+        ribbon = (f'<tr><td colspan="3" style="background:#dc2626;color:#ffffff;font-size:12px;font-weight:800;letter-spacing:.08em;'
+                  f'text-transform:uppercase;padding:6px 14px">🔥 Výnimočná cena · −{d["drop_pct"]} % oproti bežnej cene {d["typical"]} €</td></tr>'
+                  if is_hot else "")
         airline = airlines.get(d.get("airline"), d.get("airline", ""))
         bag = baggage_text(d.get("baggage"), adults)
         rows.append(f"""
 <tr><td style="padding:0 0 14px">
- <table cellpadding="0" cellspacing="0" width="100%" style="border:1px solid #e7e5e4;border-radius:14px;overflow:hidden;background:#ffffff">
+ <table cellpadding="0" cellspacing="0" width="100%" style="border:{border};border-radius:14px;overflow:hidden;background:#ffffff">
+  {ribbon}
   <tr>
    {f'<td width="132" style="width:132px;vertical-align:top"><img src="{escape(img)}" width="132" height="132" alt="" style="display:block;width:132px;height:132px;object-fit:cover"></td>' if img else ''}
    <td style="padding:14px 16px;vertical-align:top">
-    <div style="font-size:12px;color:#78716c;letter-spacing:.04em;text-transform:uppercase">{escape(d['origin'])} → {flag(d['country'])} {escape(d['country'])}</div>
+    <div style="font-size:12px;color:#78716c;letter-spacing:.04em;text-transform:uppercase">{escape(d['origin'])} → {flag(d['country'])}</div>
     <div style="font-size:19px;font-weight:700;color:#1c1917;margin:2px 0 4px">{escape(d['city'])}</div>
     <div style="font-size:13px;color:#57534e">{fmt_date(d['departure'])} – {fmt_date(d['return'])} · {nights_text(d['days'])} · {transfers_text(d['transfers'])}{' · ' + escape(airline) if airline else ''}</div>
     {f'<div style="font-size:13px;color:#57534e;margin-top:2px">{escape(bag)}</div>' if bag else ''}
-    {f'<div style="font-size:13px;color:#15803d;margin-top:6px;font-weight:600">{escape(why)}</div>' if why else ''}
+    {f'<div style="font-size:13px;color:{why_color};margin-top:6px;font-weight:700">{escape(why)}</div>' if why else ''}
    </td>
    <td style="padding:14px 16px;vertical-align:top;text-align:right;white-space:nowrap">
-    <div style="font-size:24px;font-weight:800;color:#1c1917">{d['price_pp']} €</div>
+    <div style="font-size:24px;font-weight:800;color:{'#dc2626' if is_hot else '#1c1917'}">{d['price_pp']} €</div>
+    {f'<div style="font-size:13px;color:#a8a29e;text-decoration:line-through">{d["typical"]} €</div>' if d.get('typical') and (d.get('drop_pct') or 0) >= 10 else ''}
     <div style="font-size:12px;color:#78716c;margin-bottom:10px">{'za osobu · spolu ' + str(d['price_total']) + ' €' if adults > 1 else 'spiatočná'}</div>
     <a href="{escape(buy_link(d))}" style="display:inline-block;background:#1c1917;color:#ffffff;text-decoration:none;padding:9px 16px;border-radius:999px;font-weight:600;font-size:14px">Kúpiť</a>
    </td>
@@ -106,10 +129,22 @@ def build_email(deals, tips, cfg, airlines, dashboard_url):
 <ul style="margin:0;padding-left:18px;font-size:14px;color:#44403c">{items}</ul></td></tr>"""
     app_link = (f'<a href="{escape(dashboard_url)}" style="color:#1c1917;font-weight:600">Otvoriť aplikáciu</a> · '
                 if dashboard_url else "")
+    if hot:
+        top = hot[0]
+        header = f"""<tr><td style="padding:0 0 18px">
+<table cellpadding="0" cellspacing="0" width="100%" style="background:#dc2626;border-radius:16px"><tr><td style="padding:22px 24px;color:#ffffff">
+<div style="font-size:13px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.9">🔥 Výnimočne lacná letenka</div>
+<div style="font-size:30px;font-weight:900;line-height:1.15;margin:6px 0 6px">{escape(top['origin'])} → {escape(top['city'])} za {top['price_pp']} €</div>
+<div style="font-size:16px;font-weight:600">o {top['drop_pct']} % lacnejšie ako bežne ({top['typical']} €) · {fmt_date(top['departure'])} – {fmt_date(top['return'])}</div>
+<div style="margin-top:14px"><a href="{escape(buy_link(top))}" style="display:inline-block;background:#ffffff;color:#dc2626;text-decoration:none;padding:11px 22px;border-radius:999px;font-weight:800;font-size:15px">Kúpiť hneď →</a></div>
+<div style="font-size:12px;margin-top:10px;opacity:.85">Takéto ceny zvyknú zmiznúť do pár hodín.</div>
+</td></tr></table></td></tr>"""
+    else:
+        header = f"""<tr><td style="padding:0 0 16px"><div style="font-size:13px;color:#78716c">Lacné letenky</div>
+<div style="font-size:24px;font-weight:800;color:#1c1917">{escape(headline(deals, tips))}</div></td></tr>"""
     html = f"""<div style="background:#f5f5f4;padding:24px 12px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
 <table cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;margin:0 auto">
-<tr><td style="padding:0 0 16px"><div style="font-size:13px;color:#78716c">Lacné letenky</div>
-<div style="font-size:24px;font-weight:800;color:#1c1917">{escape(headline(deals, tips))}</div></td></tr>
+{header}
 {''.join(rows)}{tip_html}
 <tr><td style="padding:16px 0 0;font-size:12px;color:#78716c">{app_link}Ceny sú živé z Kiwi.com v čase odoslania a môžu sa rýchlo meniť.</td></tr>
 </table></div>"""
@@ -169,9 +204,13 @@ def plain_text(html):
     return re.sub(r"\n\s*\n+", "\n\n", text).strip()
 
 
-def send_smtp(subject, html, smtp):
+def send_smtp(subject, html, smtp, urgent=False):
     msg = EmailMessage()
     msg["Subject"] = subject
+    if urgent:                                   # Outlook/Apple Mail zobrazia ako dôležité
+        msg["X-Priority"] = "1 (Highest)"
+        msg["Importance"] = "High"
+        msg["Priority"] = "urgent"
     msg["From"] = formataddr(("Lacné letenky", smtp["user"]))
     msg["To"] = smtp["to"]
     msg["Message-ID"] = make_msgid(domain=smtp["user"].split("@")[-1])
@@ -202,7 +241,7 @@ def notify(deals, tips, cfg, airlines, dashboard_url):
     if ch["smtp"]:
         try:
             subject, html = build_email(deals, tips, cfg, airlines, dashboard_url)
-            send_smtp(subject, html, ch["smtp"])
+            send_smtp(subject, html, ch["smtp"], urgent=bool(exceptional(deals)))
             ok = True
         except (smtplib.SMTPException, OSError) as e:
             errors.append(f"e-mail (SMTP): {e}")

@@ -18,7 +18,7 @@ export const DEFAULTS: Config = {
     latam: { label: "Južná Amerika a Karibik", enabled: true, max_price: 650, min_days: 7, max_days: 10, ...REGION_EXTRA },
   },
   watchlist: [], excluded: [],
-  smart: { enabled: true, drop_pct: 25, min_history_days: 4, max_over_limit_pct: 50 },
+  smart: { enabled: true, drop_pct: 25, exceptional_pct: 40, exceptional_min_saving: 100, min_history_days: 4, max_over_limit_pct: 50 },
   tips: { enabled: true },
   notify: { ntfy_topic: "", health_alerts: true },
   live: { max_verify_per_run: 10, max_watch_searches: 10, explore_per_run: 14, cache_hours: 6 },
@@ -53,3 +53,10 @@ export const ORIGIN_OPTIONS: [string, string][] = [
   ["BRQ", "Brno"], ["KRK", "Krakov"], ["KTW", "Katovice"], ["MUC", "Mníchov"], ["LJU", "Ľubľana"], ["GRZ", "Graz"],
 ];
 export const originName = (code: string) => ORIGIN_OPTIONS.find((o) => o[0] === code)?.[1] ?? code;
+
+// „z Viedne“, „z Bratislavy“… (2. pád pre texty typu „odlet z …“)
+const FROM: Record<string, string> = {
+  VIE: "Viedne", BTS: "Bratislavy", BUD: "Budapešti", PRG: "Prahy", KSC: "Košíc", BRQ: "Brna",
+  KRK: "Krakova", KTW: "Katovíc", MUC: "Mníchova", LJU: "Ľubľany", GRZ: "Grazu",
+};
+export const fromName = (code: string) => `z ${FROM[code] ?? code}`;

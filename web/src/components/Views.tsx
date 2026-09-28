@@ -1,4 +1,4 @@
-import { originName } from "../lib/config";
+import { fromName } from "../lib/config";
 import { REGION_ICON, REGION_ORDER, ago, dateRange, discount, euro, flag, nights, plural, safeUrl, transfers } from "../lib/format";
 import {
   addWatch, data, dealCountText, liveOnly, loadError, origin, region, selected, setTab, sort, visibleDeals, type Sort,
@@ -12,7 +12,7 @@ function Hero() {
   const d = data.value!;
   const live = d.deals.filter((o) => o.live);
   if (!live.length) return null;
-  const best = live.slice().sort((a, b) => a.score - b.score)[0];
+  const best = live.slice().sort((a, b) => Number(!!b.exceptional) - Number(!!a.exceptional) || a.score - b.score)[0];
   const cheapestBy = (r: string) => live.filter((o) => o.region === r).sort((a, b) => a.price_pp - b.price_pp)[0];
   const byRegion = REGION_ORDER.map(cheapestBy).filter((o): o is Offer => !!o && o !== best);
   const rest = live.filter((o) => o !== best && !byRegion.includes(o)).sort((a, b) => a.score - b.score);
@@ -24,10 +24,10 @@ function Hero() {
         <Photo src={best.image} country={best.country} />
         <div class="hero-body">
           <div>
-            <div class="eyebrow">Najlepšia ponuka práve teraz{off && off > 0 ? ` · −${off} %` : ""}</div>
+            <div class="eyebrow">{best.exceptional ? "🔥 Výnimočne lacná letenka" : "Najlepšia ponuka práve teraz"}{off && off > 0 ? ` · −${off} %` : ""}</div>
             <div class="hero-city">{best.city}</div>
             <div class="hero-meta">
-              <span>{flag(best.country)} z {originName(best.origin)}</span>
+              <span>{flag(best.country)} {fromName(best.origin)}</span>
               <span>{dateRange(best.departure, best.return)}</span>
               <span>{nights(best.days)}</span>
               <span>{transfers(best.transfers)}</span>
@@ -91,7 +91,7 @@ export function DealsView() {
         {origins.length > 1 && (
           <select class="select" value={origin.value} onChange={(e) => (origin.value = (e.target as HTMLSelectElement).value)} aria-label="Letisko odletu">
             <option value="all">Zo všetkých letísk</option>
-            {origins.map((o) => <option value={o}>z {originName(o)}</option>)}
+            {origins.map((o) => <option value={o}>{fromName(o)}</option>)}
           </select>
         )}
         <select class="select" value={sort.value} onChange={(e) => setSort((e.target as HTMLSelectElement).value as Sort)} aria-label="Zoradiť">
@@ -124,7 +124,7 @@ export function TipsView() {
         <div class="tips">
           {tips.map((t) => (
             <a class="tip" href={safeUrl(t.link)} target="_blank" rel="noopener">
-              <div class="tip-top"><span class="pill dark" style={{ background: "var(--surface-3)", color: "var(--ink-2)" }}>z {originName(t.origin)}</span>{t.package ? <span>✈️ + 🏨 balík</span> : <span>✈️ letenka</span>}<span style={{ marginLeft: "auto" }}>{ago(t.published)}</span></div>
+              <div class="tip-top"><span class="pill dark" style={{ background: "var(--surface-3)", color: "var(--ink-2)" }}>{fromName(t.origin)}</span>{t.package ? <span>✈️ + 🏨 balík</span> : <span>✈️ letenka</span>}<span style={{ marginLeft: "auto" }}>{ago(t.published)}</span></div>
               <div class="tip-title">{t.title}</div>
               {t.price ? <div class="tip-price num">od {euro(t.price)}</div> : null}
             </a>

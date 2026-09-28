@@ -52,7 +52,7 @@ def price_age(link, today):
         return None
 
 
-def to_offer(it, places, cfg, today):
+def to_offer(it, places, cfg, today, max_age=None):
     """Záznam z API → ponuka. None, ak chýbajú údaje, let už bol alebo je cena príliš stará."""
     dest = it.get("destination")
     if not places.city(dest) or not it.get("return_at") or it.get("price") is None:
@@ -63,7 +63,7 @@ def to_offer(it, places, cfg, today):
     if dep <= today:
         return None
     age = price_age(it.get("link"), today)
-    if age is not None and age > cfg["max_price_age_days"]:
+    if age is not None and age > (max_age if max_age is not None else cfg["max_price_age_days"]):
         return None
     region = region_of(country)
     adults = cfg["passengers"]["adults"]

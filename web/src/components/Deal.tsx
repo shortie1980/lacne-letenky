@@ -1,5 +1,5 @@
 import { useEffect } from "preact/hooks";
-import { originName } from "../lib/config";
+import { fromName, originName } from "../lib/config";
 import {
   baggage, dateShort, discount, duration, euro, flag, freshness, minutesBetween, nights, safeUrl, time, transfers,
 } from "../lib/format";
@@ -9,40 +9,45 @@ import { PriceChart, Sparkline } from "./charts";
 import { Arrow, Ban, Bell, Close, External } from "./icons";
 import { Photo } from "./ui";
 
-const adults = () => data.value?.passengers.adults ?? 1;
+const paxOf = (o: Offer) => o.adults ?? data.value?.passengers.adults ?? 1;
+const tripLabel = (o: Offer) => (o.return ? "spiatočná" : "jednosmerná");
 
 function Why({ o }: { o: Offer }) {
+  if (o.exceptional && o.typical)
+    return <div class="why hot">🔥 výnimočná cena · o {o.drop_pct} % lacnejšie ako bežne ({euro(o.typical)})</div>;
   if (o.reasons?.includes("smart") && o.typical)
     return <div class="why smart">📉 o {o.drop_pct} % lacnejšie ako bežne ({euro(o.typical)})</div>;
-  if (o.limit) return <div class="why">✓ pod tvojím limitom {euro(o.limit)}</div>;
-  return <div class="why muted">bez limitu</div>;
+  if (o.limit) return <div class="why">✓ pod tvojím limitom {euro(o.limit)}{o.drop_pct && o.drop_pct >= 10 ? ` · bežne ${euro(o.typical!)}` : ""}</div>;
+  if (o.typical && o.drop_pct != null)
+    return <div class={`why ${o.drop_pct >= 25 ? "smart" : "muted"}`}>{o.drop_pct > 0 ? `o ${o.drop_pct} % lacnejšie ako bežne` : `bežná cena`} ({euro(o.typical)})</div>;
+  return null;
 }
 
 export function DealCard({ o, index = 0 }: { o: Offer; index?: number }) {
   const off = discount(o);
-  const bag = baggage(o.baggage, adults());
+  const bag = baggage(o.baggage, paxOf(o));
   return (
-    <article class="card" style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}>
+    <article class={`card ${o.exceptional ? "card-hot" : ""}`} style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}>
       <button class="card-media" onClick={() => (selected.value = o)} aria-label={`Detail: ${o.city}`}>
         <Photo src={o.image} country={o.country} />
         <div class="media-top">
-          <span class={`pill ${o.live ? "" : "dark"}`}>{o.live ? "● živá cena" : freshness(o)}</span>
-          {off != null && off > 0 ? <span class={`pill ${o.reasons?.includes("smart") ? "hot" : "good"}`}>−{off} %</span> : null}
+          {o.exceptional ? <span class="pill hot">🔥 výnimočná cena</span> : <span class={`pill ${o.live ? "" : "dark"}`}>{o.live ? "● živá cena" : freshness(o)}</span>}
+          {off != null && off > 0 ? <span class={`pill ${o.exceptional || o.reasons?.includes("smart") ? "hot" : "good"}`}>−{off} %</span> : null}
         </div>
         <div class="media-bottom">
-          <div class="from">{flag(o.country)} z {originName(o.origin)}</div>
+          <div class="from">{flag(o.country)} {fromName(o.origin)}</div>
           <div class="city">{o.city}</div>
         </div>
       </button>
       <div class="card-body">
         <div class="price-row">
           <span class="price num">{euro(o.price_pp)}</span>
-          <span class="price-sub">{adults() > 1 ? `/ os. · spolu ${euro(o.price_total)}` : "spiatočná"}</span>
+          <span class="price-sub">{paxOf(o) > 1 ? `/ os. · spolu ${euro(o.price_total)}` : tripLabel(o)}</span>
           {o.typical && o.typical > o.price_pp ? <span class="was num">{euro(o.typical)}</span> : null}
         </div>
-        <div class="dates">{dateShort(o.departure)} <span class="arrow">→</span> {dateShort(o.return)}</div>
+        <div class="dates">{dateShort(o.departure)}{o.return ? <> <span class="arrow">→</span> {dateShort(o.return)}</> : null}</div>
         <div class="meta">
-          <span class="tag">🌙 {nights(o.days)}</span>
+          {o.return ? <span class="tag">🌙 {nights(o.days)}</span> : null}
           <span class="tag">🔁 {transfers(o.transfers)}</span>
           {o.airline_name ? <span class="tag">✈ {o.airline_name}</span> : null}
           {bag ? <span class="tag">{bag.icon} {bag.text}</span> : null}
@@ -93,7 +98,7 @@ export function DealSheet() {
     return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
   }, [o]);
   if (!o) return null;
-  const bag = baggage(o.baggage, adults());
+  const bag = baggage(o.baggage, paxOf(o));
   const close = () => (selected.value = null);
   return (
     <>
@@ -109,19 +114,20 @@ export function DealSheet() {
         </div>
         <div class="sheet-body">
           <div class="sheet-price">
-            <div><b class="num">{euro(o.price_pp)}</b><div class="price-sub">{adults() > 1 ? `za osobu · spolu ${euro(o.price_total)}` : "spiatočná letenka"}</div></div>
+            <div><b class="num">{euro(o.price_pp)}</b><div class="price-sub">{paxOf(o) > 1 ? `za osobu · spolu ${euro(o.price_total)}` : `${tripLabel(o)} letenka`}</div></div>
             <div style={{ marginLeft: "auto", textAlign: "right" }}><Why o={o} /><div class="price-sub">{o.live ? "✓ živá cena z Kiwi.com" : freshness(o)}</div></div>
           </div>
           <div class="kv">
             <div>Odlet<b>{dateShort(o.departure)}</b></div>
-            <div>Návrat<b>{dateShort(o.return)}</b></div>
-            <div>Dĺžka pobytu<b>{nights(o.days)}</b></div>
+            {o.return ? <div>Návrat<b>{dateShort(o.return)}</b></div> : null}
+            {o.return ? <div>Dĺžka pobytu<b>{nights(o.days)}</b></div> : null}
+            {o.typical ? <div>Bežná cena<b>{euro(o.typical)}</b></div> : null}
             <div>Prestupy<b>{transfers(o.transfers)}</b></div>
             {o.airline_name ? <div>Aerolínia<b>{o.airline_name}</b></div> : null}
             {bag ? <div>Batožina<b>{bag.icon} {bag.text}</b></div> : null}
           </div>
-          {o.out && o.back ? (
-            <div class="block"><h4>Lety</h4><Itinerary title="Tam" leg={o.out} /><Itinerary title="Späť" leg={o.back} /></div>
+          {o.out ? (
+            <div class="block"><h4>Lety</h4><Itinerary title="Tam" leg={o.out} />{o.back ? <Itinerary title="Späť" leg={o.back} /> : null}</div>
           ) : (
             <div class="callout warn">Cena je z cache vyhľadávaní iných ľudí a ešte nebola overená naživo. Presné lety a cenu uvidíš po kliknutí na Pozrieť.</div>
           )}

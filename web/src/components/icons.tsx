@@ -16,4 +16,5 @@ export const Bell = () => <Svg><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-
 export const Ban = () => <Svg><circle cx="12" cy="12" r="9" /><path d="m5.6 5.6 12.8 12.8" /></Svg>;
 export const Arrow = () => <Svg><path d="M5 12h14M13 6l6 6-6 6" /></Svg>;
 export const Refresh = () => <Svg><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4" /></Svg>;
+export const Search = () => <Svg><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></Svg>;
 export const Info = () => <Svg><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></Svg>;

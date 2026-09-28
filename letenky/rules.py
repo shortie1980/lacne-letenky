@@ -61,12 +61,23 @@ def fits_rules(o, cfg):
     return True
 
 
+MARKET_DAYS = 14
+
+
 def typical_price(history_entry, cfg):
-    """Bežná cena za osobu: medián denných miním živých cien (len ak je dosť histórie)."""
-    pts = (history_entry or {}).get("live") or []
-    if len({p[0] for p in pts}) < cfg["smart"]["min_history_days"]:
-        return None
-    return statistics.median(p[1] for p in pts)
+    """Bežná cena za osobu a jej zdroj.
+
+    1. „live“ – medián denných miním živých cien z Kiwi, ak je aspoň `min_history_days` dní histórie,
+    2. „market“ – medián cien z tisícov vyhľadávaní iných ľudí (Travelpayouts) za posledné dni.
+    """
+    entry = history_entry or {}
+    live = entry.get("live") or []
+    if len({p[0] for p in live}) >= cfg["smart"]["min_history_days"]:
+        return statistics.median(p[1] for p in live), "live"
+    market = (entry.get("market") or [])[-MARKET_DAYS:]
+    if market:
+        return statistics.median(p[1] for p in market), "market"
+    return None, None
 
 
 def evaluate(o, cfg, history):
@@ -78,13 +89,17 @@ def evaluate(o, cfg, history):
     if o["price_pp"] <= limit:
         o["reasons"].append("limit")
     s = cfg["smart"]
-    typical = typical_price(history.get(o["destination"]), cfg) if s["enabled"] else None
+    typical, source = typical_price(history.get(o["destination"]), cfg)
     o["typical"] = round(typical) if typical else None
-    if typical:
-        o["drop_pct"] = round((1 - o["price_pp"] / typical) * 100)
-        if (o["drop_pct"] >= s["drop_pct"] and o["live"]
-                and o["price_pp"] <= limit * (1 + s["max_over_limit_pct"] / 100)):
+    o["typical_source"] = source
+    o["drop_pct"] = round((1 - o["price_pp"] / typical) * 100) if typical else None
+    o["exceptional"] = False
+    if typical and o["live"] and o["price_pp"] <= limit * (1 + s["max_over_limit_pct"] / 100):
+        if s["enabled"] and o["drop_pct"] >= s["drop_pct"]:
             o["reasons"].append("smart")
+        saving = typical - o["price_pp"]
+        o["exceptional"] = (o["drop_pct"] >= s["exceptional_pct"] and saving >= s["exceptional_min_saving"]
+                            and bool(o["reasons"]))
     return o
 
 

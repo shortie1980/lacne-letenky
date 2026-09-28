@@ -7,11 +7,12 @@ from pathlib import Path
 
 from . import config, health, notify, rules
 from .geo import load_places
-from .site import read_json, update_history, write_json, write_site
+from .site import read_json, update_history, update_market, write_json, write_site
 from .sources import fly4free, kiwi, travelpayouts
 from .text import freshness_text, price_text, transfers_text
 
 STATE_VERSION = 2
+MARKET_MAX_AGE_DAYS = 30
 SITE_DIR = Path(os.environ.get("SITE_DIR", config.ROOT / "site"))
 DATA_DIR = SITE_DIR / "data"
 
@@ -27,7 +28,7 @@ def filter_new(deals, state, cfg, now):
             if age_days < cfg["renotify_days"] and not dropped:
                 continue
         fresh.append(d)
-    fresh.sort(key=rules.score)
+    fresh.sort(key=lambda d: (not d.get("exceptional"), rules.score(d)))
     per_region, out = {}, []
     for d in fresh:
         per_region[d["region"]] = per_region.get(d["region"], 0) + 1
@@ -67,7 +68,7 @@ SAMPLE_DEAL = {
     "price_total": 399, "limit": 450, "departure": "2026-11-10", "return": "2026-11-18", "days": 8, "transfers": 1,
     "airline": "EY", "airlines": ["EY"], "link": None, "image_id": "bangkok_th",
     "baggage": {"personalItem": 1, "cabinBag": 1, "checkedBag": 1}, "reasons": ["limit", "smart"],
-    "typical": 540, "drop_pct": 26,
+    "typical": 690, "drop_pct": 42, "typical_source": "market", "exceptional": True,
 }
 SAMPLE_TIP = {"title": "Skúšobný tip: lety z Viedne do Ázie od 399 €", "link": "https://www.fly4free.com/", "origin": "VIE"}
 
@@ -95,6 +96,7 @@ def run(args):
 
     # 1) Kandidáti z cache (Travelpayouts)
     offers, tp_errors, tp_calls = [], [], 0
+    market = {}                                   # destinácia -> {deň odletu: najnižšia cena za osobu}
     for origin in cfg["origins"]:
         for month in travelpayouts.upcoming_months(cfg["months_ahead"], today):
             tp_calls += 1
@@ -103,10 +105,18 @@ def run(args):
             except travelpayouts.TravelpayoutsError as e:
                 tp_errors.append(str(e))
                 continue
-            offers.extend(o for o in (travelpayouts.to_offer(it, places, cfg, today) for it in items) if o)
+            for it in items:
+                o = travelpayouts.to_offer(it, places, cfg, today, max_age=MARKET_MAX_AGE_DAYS)
+                if not o:
+                    continue
+                days = market.setdefault(o["destination"], {})
+                days[o["departure"]] = min(days.get(o["departure"], o["price_pp"]), o["price_pp"])
+                if o["age"] is None or o["age"] <= cfg["max_price_age_days"]:
+                    offers.append(o)
     tp_ok = len(tp_errors) < tp_calls
     events.append(("travelpayouts", health.update(state, "travelpayouts", tp_ok, "; ".join(tp_errors[:2]), now), tp_errors[:1]))
     print(f"Travelpayouts: {len(offers)} kandidátov z {tp_calls} dopytov ({len(tp_errors)} chýb)")
+    history = update_market(history, market, today)
 
     # 2) Živé ceny z Kiwi
     budget = kiwi.Budget()

@@ -16,7 +16,9 @@ export interface Offer {
   airline: string; airlines?: string[]; airline_name?: string;
   age: number | null; live: boolean; baggage: Baggage | null; duration?: number | null;
   out?: Leg | null; back?: Leg | null;
-  typical?: number | null; drop_pct?: number | null; reasons?: string[];
+  typical?: number | null; typical_source?: "live" | "market" | null; drop_pct?: number | null;
+  reasons?: string[]; exceptional?: boolean;
+  adults?: number;            // len pri ručnom vyhľadávaní (inak podľa nastavení)
   buy: string; google: string; image: string | null; score: number;
 }
 
@@ -36,7 +38,11 @@ export interface DealsData {
   stats: { offers_checked: number; live: number; deals: number; kiwi_calls: number };
 }
 
-export interface HistoryEntry { name: string; country: string; region: string; points?: [string, number][]; live?: [string, number][] }
+export interface HistoryEntry {
+  name: string; country: string; region: string;
+  points?: [string, number][]; live?: [string, number][];
+  market?: [string, number, number][];   // [deň, medián ceny z cache, počet vzoriek]
+}
 export type History = Record<string, HistoryEntry>;
 
 export interface Places { cities: [string, string, string][]; countries: [string, string][]; airlines: [string, string][] }
@@ -56,7 +62,7 @@ export interface Config {
   filters: { earliest_departure_hour: number; latest_departure_hour: number; exclude_airlines: string[] };
   regions: Record<string, Region>;
   watchlist: WatchItem[]; excluded: string[];
-  smart: { enabled: boolean; drop_pct: number; min_history_days: number; max_over_limit_pct: number };
+  smart: { enabled: boolean; drop_pct: number; exceptional_pct: number; exceptional_min_saving: number; min_history_days: number; max_over_limit_pct: number };
   tips: { enabled: boolean };
   notify: { ntfy_topic: string; health_alerts: boolean };
   live: { max_verify_per_run: number; max_watch_searches: number; explore_per_run: number; cache_hours: number };

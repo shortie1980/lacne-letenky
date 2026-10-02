@@ -13,17 +13,15 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: flight-watch
-  cancel-in-progress: false
-
 jobs:
   watch:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    # Fronta je len na tomto jobe. Keby sa nasadenie na Pages zaseklo (čaká na
+    # schválenie prostredia), nesmie zablokovať hľadanie ani odosielanie e-mailov.
+    concurrency:
+      group: flight-watch
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -83,5 +81,17 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
+  # Nasadenie na GitHub Pages je samostatný job. Prostredie github-pages vyžaduje
+  # actions/deploy-pages, ale keďže tento job nie je vo fronte „flight-watch“,
+  # prípadné zaseknutie tu už nezastaví ďalšie behy vyhľadávania.
+  deploy:
+    needs: watch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - id: deploy
         uses: actions/deploy-pages@v4

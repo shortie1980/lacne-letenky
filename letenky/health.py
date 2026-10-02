@@ -1,7 +1,9 @@
 """Stav zdrojov dát. Ak zdroj zlyhá viackrát po sebe, pošle sa upozornenie (a po obnovení ďalšie)."""
 FAILS_BEFORE_ALERT = 3
 SOURCES = {"travelpayouts": "Travelpayouts (ceny z cache)", "kiwi": "Kiwi.com (živé ceny)",
-           "fly4free": "fly4free (akciové tipy)", "letenkyzababku": "Letenky za babku (akciové tipy)",
+           "fly4free": "fly4free (akciové tipy)",
+           "letenkyzababku": "Letenky za babku (akciové tipy)",
+           "thriftytraveler": "Thrifty Traveler (USA a globálne tipy)",
            "notify": "odosielanie upozornení"}
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from . import config, health, notify, rules
 from .geo import load_places
 from .site import read_json, update_history, update_market, write_json, write_site
-from .sources import fly4free, kiwi, travelpayouts, letenkyzababku
+from .sources import fly4free, kiwi, travelpayouts, letenkyzababku, thriftytraveler
 from .text import freshness_text, price_text, transfers_text
 
 STATE_VERSION = 2
@@ -149,6 +149,13 @@ def run(args):
             events.append(("letenkyzababku", health.update(state, "letenkyzababku", True, None, now), None))
         except letenkyzababku.LetenkyzababkuError as e:
             events.append(("letenkyzababku", health.update(state, "letenkyzababku", False, e, now), None))
+
+        # thriftytraveler tips
+        try:
+            tips.extend(thriftytraveler.parse(thriftytraveler.fetch(), cfg["origins"], places, now))
+            events.append(("thriftytraveler", health.update(state, "thriftytraveler", True, None, now), None))
+        except thriftytraveler.ThriftyTravelerError as e:
+            events.append(("thriftytraveler", health.update(state, "thriftytraveler", False, e, now), None))
 
         seen = set(state.get("tips_seen", []))
         recent = now - dt.timedelta(hours=36)
